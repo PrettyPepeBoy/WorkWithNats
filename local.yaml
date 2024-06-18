@@ -1,0 +1,10 @@
+database:
+  host: "localhost"
+  port: 5432
+  database: "postgres"
+  username: "postgres"
+  password: "POSTGRES_PASSWORD"
+cache:
+  cleanup_interval: 60s
+http_server:
+  port: "8085"
