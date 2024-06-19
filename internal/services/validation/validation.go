@@ -33,7 +33,11 @@ func Valid(data []byte) bool {
 func castType(val interface{}) bool {
 	switch v := val.(type) {
 	case float64:
-		if v <= 0 {
+		valInt := int(v)
+		if valInt <= 0 {
+			return false
+		}
+		if valInt > (2 << 32) {
 			return false
 		}
 		return true
@@ -44,10 +48,19 @@ func castType(val interface{}) bool {
 		if len(v) == 0 {
 			return false
 		}
-		return true
+		return correctString(v)
 	case bool:
 		return true
 	default:
 		return false
 	}
+}
+
+func correctString(v string) bool {
+	for _, elem := range v {
+		if !((elem >= 'a' && elem <= 'z') || (elem >= 'A' && elem <= 'Z')) {
+			return false
+		}
+	}
+	return true
 }

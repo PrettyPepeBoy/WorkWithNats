@@ -22,6 +22,12 @@ func TestValid(t *testing.T) {
 		}, {
 			data:     []byte(``),
 			expected: false,
+		}, {
+			data:     []byte(`{"name":"TOYOTA", "price":50000000000000000000, "amount":70}`),
+			expected: false,
+		}, {
+			data:     []byte(`{"name":"TOYOTA*****\/\f", "price":5000000, "amount":70}`),
+			expected: false,
 		},
 		}
 
