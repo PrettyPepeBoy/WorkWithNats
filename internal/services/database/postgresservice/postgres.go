@@ -8,44 +8,37 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func PutDataInTable(strg *postgres.Storage, data []byte) {
-	const op = "postgresservice/PutDataInTable"
-	//todo validate request body
-	id, err := strg.PutInTable(data)
+func PutDataInTable(strg *postgres.Storage, product models.ProductBody) {
+	data, err := json.Marshal(product)
 	if err != nil {
-		logrus.Errorf("failed to put request body in database, error: %v, location: %v", err, op)
+		logrus.Error("[postgresservice.PutDataInTable] failed to unmarshal json, error ", err)
+		return
+	}
+	id, err := strg.PutInTable(product.Name, data)
+	if err != nil {
+		logrus.Error("failed to put request body in database, error ", err)
 		return
 	}
 	logrus.Infof("added new product with id: %v", id)
 }
 
-func GetDataFromTable(strg *postgres.Storage, data []byte) ([]byte, error) {
-	const op = "handlers/GetDataFromTable"
-	var id models.ProductID
-	err := json.Unmarshal(data, &id)
-	if err != nil {
-		logrus.Errorf("failed to unmarshal request body, error: %v, location: %v", err, op)
-		return nil, err
-	}
-	resp, err := strg.GetFromTable(id.ID)
+func GetDataFromTable(strg *postgres.Storage, id int) ([]byte, error) {
+	data, err := strg.GetFromTable(id)
 	if err != nil {
 		if errors.Is(err, postgres.ErrRowNotExist) {
 			return nil, nil
 		}
-		logrus.Errorf("failed to get resp from database, error: %v, location: %v", err, op)
+		logrus.Error(" [postgresservice.GetDataFromTable] failed to get resp from database, error ", err)
 		return nil, err
 	}
-	var product models.ProductIDAndBody
-	product.ID = id.ID
-	err = json.Unmarshal(resp, &product.ProductBody)
+	return data, nil
+}
+
+func CheckInTable(strg *postgres.Storage) ([]interface{}, error) {
+	//todo Creat CheckInTableHandler
+	resp, err := strg.CheckInTable()
 	if err != nil {
-		logrus.Errorf("failed to unmarshal data, error: %v, location: %v", err, op)
 		return nil, err
 	}
-	rawbyte, err := json.Marshal(product)
-	if err != nil {
-		logrus.Errorf("failed to marshal rawbyte, error: %v, location: %v", err, op)
-		return nil, err
-	}
-	return rawbyte, nil
+	return resp, err
 }

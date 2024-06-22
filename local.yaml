@@ -8,3 +8,10 @@ cache:
   cleanup_interval: 60s
 http_server:
   port: "8085"
+nats_server:
+  host: "127.0.0.1"
+  port: "4222"
+  subject:
+    database:
+      product:
+        put: "database.product.put"
