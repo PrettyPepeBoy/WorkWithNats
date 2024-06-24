@@ -53,7 +53,7 @@ func (c *Cache) DeleteKey(key int) {
 	c.list.DeleteFromList(key)
 }
 
-func (c *Cache) ShowKey(key int) ([]byte, bool) {
+func (c *Cache) Get(key int) ([]byte, bool) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 	value, ok := c.items[key]

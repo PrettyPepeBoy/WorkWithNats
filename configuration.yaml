@@ -1,0 +1,17 @@
+product:
+  table:
+    host: localhost
+    port: 5432
+    database: postgres
+    username: postgres
+    password: POSTGRES_PASSWORD
+
+cache:
+  cleanup_interval: 60s
+
+http-server:
+  port: 8000
+
+nats-server:
+  host: 127.0.0.1:4222
+  subject: events.products

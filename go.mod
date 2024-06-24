@@ -1,4 +1,4 @@
-module TestTaskNats
+module github.com/PrettyPepeBoy/WorkWithNats
 
 go 1.22
 
