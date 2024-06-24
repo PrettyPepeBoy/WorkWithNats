@@ -1,10 +1,11 @@
-package natsserver
+package producthandler
 
 import (
 	"TestTaskNats/internal/models"
 	"encoding/json"
 	"github.com/nats-io/nats.go"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 type ProductHandler struct {
@@ -22,12 +23,17 @@ func NewProductHandler(natsConn *nats.Conn) (*ProductHandler, error) {
 		innerChannel: c,
 	}
 
-	h.natsSubs, _ = natsConn.Subscribe("database.product.put", h.Process)
+	var err error
+	subject := viper.GetString("nats_server.subject")
+	h.natsSubs, err = natsConn.Subscribe(subject, h.Process)
+	if err != nil {
+		logrus.Errorf("[NewProductHandler] failed to subscribe to %s, error: %v", subject, err)
+	}
+
 	return h, nil
 }
 
 func (h *ProductHandler) Process(msg *nats.Msg) {
-	_ = msg.Respond([]byte("get message"))
 	var product models.ProductBody
 	err := json.Unmarshal(msg.Data, &product)
 	if err != nil {
@@ -39,12 +45,13 @@ func (h *ProductHandler) Process(msg *nats.Msg) {
 		return
 	}
 	h.innerChannel <- product
-	logrus.Info(h.C, "chanel for reading")
-	logrus.Info(h.innerChannel, "inner chanel")
 }
 
 func validateProductData(product models.ProductBody) bool {
-	if !correctSymbols(product.Name, product.Category) {
+	if !correctSymbols(product.Name, product.Category, product.Location, product.Color) {
+		return false
+	}
+	if !correctInteger(product.Amount, product.Price) {
 		return false
 	}
 	return true
@@ -52,11 +59,28 @@ func validateProductData(product models.ProductBody) bool {
 
 func correctSymbols(str ...string) bool {
 	for _, word := range str {
+		if len(word) == 0 {
+			continue
+		}
 		for _, elem := range word {
 			if !((elem >= 'a' && elem <= 'z') || (elem >= 'A' && elem <= 'Z')) {
 				return false
 			}
 		}
 	}
+	return true
+}
+
+func correctInteger(integers ...int) bool {
+	for _, i := range integers {
+		if i < 0 {
+			return false
+		}
+
+		if i > 1<<35 {
+			return false
+		}
+	}
+
 	return true
 }

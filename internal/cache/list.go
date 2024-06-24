@@ -8,7 +8,7 @@ type List struct {
 	Key      int
 }
 
-func InitList() List {
+func NewList() List {
 	return List{}
 }
 

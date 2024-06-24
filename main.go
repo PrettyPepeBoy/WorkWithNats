@@ -6,7 +6,7 @@ import (
 	"TestTaskNats/internal/database/postgres"
 	"TestTaskNats/internal/services/database/postgresservice"
 	"TestTaskNats/internal/transport/endpoint"
-	"TestTaskNats/internal/transport/natsserver"
+	"TestTaskNats/internal/transport/natsserver/handlers/producthandler"
 	"context"
 	"github.com/nats-io/nats.go"
 	"github.com/sirupsen/logrus"
@@ -16,12 +16,6 @@ import (
 	"os/signal"
 	"syscall"
 )
-
-type Services struct {
-	storage  *postgres.Storage
-	natsConn *nats.Conn
-	cch      *cache.Cache
-}
 
 func main() {
 	config.MustInitConfig()
@@ -75,7 +69,7 @@ func connectInternalServicesToHttpHandlers(cch *cache.Cache, strg *postgres.Stor
 }
 
 func doProductHandler(natsConn *nats.Conn, strg *postgres.Storage) {
-	productHandler, err := natsserver.NewProductHandler(natsConn)
+	productHandler, err := producthandler.NewProductHandler(natsConn)
 	if err != nil {
 		logrus.Fatal("failed to connect to nats")
 	}

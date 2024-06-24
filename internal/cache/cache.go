@@ -20,7 +20,7 @@ type Item struct {
 
 func NewCache(cleanupInterval time.Duration) *Cache {
 	m := make(map[int]Item)
-	list := InitList() //аналогично с кэшоим
+	list := NewList()
 	c := &Cache{
 		cleanupInterval: cleanupInterval,
 		items:           m,
@@ -44,13 +44,13 @@ func (c *Cache) PutKey(key int, value []byte) {
 	}
 	list.DeleteFromList(key)
 	list.PutInList(key)
-	c.list.PrintList()
 }
 
 func (c *Cache) DeleteKey(key int) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 	delete(c.items, key)
+	c.list.DeleteFromList(key)
 }
 
 func (c *Cache) ShowKey(key int) ([]byte, bool) {
@@ -61,7 +61,9 @@ func (c *Cache) ShowKey(key int) ([]byte, bool) {
 		logrus.Infof("there is no such key: %v in cacheservice", key)
 		return nil, false
 	}
-	logrus.Infof("value of key: %v is: %v", key, value)
+	list := c.list.DeleteFromList(key)
+	list.PutInList(key)
+	logrus.Infof("value of key: %v is: %v", key, string(value.Value))
 	return value.Value, true
 }
 
