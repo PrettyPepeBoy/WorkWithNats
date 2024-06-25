@@ -1,83 +1,92 @@
 package main
 
 import (
-	"TestTaskNats/internal/cache"
-	"TestTaskNats/internal/config"
-	"TestTaskNats/internal/database/postgres"
-	"TestTaskNats/internal/services/database/postgresservice"
-	"TestTaskNats/internal/transport/endpoint"
-	"TestTaskNats/internal/transport/natsserver/handlers/producthandler"
 	"context"
+	"errors"
+	"github.com/PrettyPepeBoy/WorkWithNats/internal/cache"
+	"github.com/PrettyPepeBoy/WorkWithNats/internal/endpoint"
+	"github.com/PrettyPepeBoy/WorkWithNats/internal/product"
 	"github.com/nats-io/nats.go"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/valyala/fasthttp"
-	"os"
 	"os/signal"
 	"syscall"
 )
 
+var (
+	natsConn       *nats.Conn
+	productCache   *cache.Cache
+	productTable   *product.Table
+	productHandler *product.Handler
+)
+
 func main() {
-	config.MustInitConfig()
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
+	var err error
 
-	strg := connectDatabase()
-	natsConn := connectNats()
-	cch := createNewCache()
+	mustInitConfig()
+	mustConnectNats()
 
-	go doProductHandler(natsConn, strg)
+	productCache = cache.NewCache(viper.GetDuration("cache.cleanup_interval"))
+	productTable, err = product.NewTable()
+	if err != nil {
+		logrus.Fatal(err.Error())
+	}
 
-	httpHandler := connectInternalServicesToHttpHandlers(cch, strg)
-
-	logrus.Infof("listen server on port: %v", viper.GetString("http_server.port"))
+	httpHandler := endpoint.NewHttpHandler(productCache, productTable)
+	initProductProcessing()
+	logrus.Info("our cache cleanup_interval is: ", viper.GetDuration("cache.cleanup_interval"))
+	logrus.Infof("listen server on port: %v", viper.GetString("http-server.port"))
 	go func() {
-		err := fasthttp.ListenAndServe(":"+viper.GetString("http_server.port"), httpHandler.CreateMux())
+		err := fasthttp.ListenAndServe(":"+viper.GetString("http-server.port"), httpHandler.Handle)
 		if err != nil {
 			logrus.Fatalf("failed to connect to http server")
 		}
 	}()
+
+	ctx, _ := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	<-ctx.Done()
+
 	logrus.Info("stopping server")
 }
 
-func connectDatabase() *postgres.Storage {
-	strg := postgres.MustConnectDB(context.Background(),
-		viper.GetString("database.username"),
-		os.Getenv(viper.GetString("database.password")),
-		viper.GetString("database.host"),
-		viper.GetString("database.database"),
-		viper.GetInt("database.port"),
-	)
-	return strg
-}
-
-func connectNats() *nats.Conn {
-	natsConn, err := nats.Connect(viper.GetString("natsserver.host") + ":" + viper.GetString("natsserver.port"))
+func mustInitConfig() {
+	viper.SetConfigFile("./configuration.yaml")
+	err := viper.ReadInConfig()
 	if err != nil {
-		logrus.Fatal("failed to connect to nats")
+		logrus.Fatalf("failed to read in config from configuration.yaml, error: %v", err)
 	}
-	return natsConn
 }
 
-func createNewCache() *cache.Cache {
-	return cache.NewCache(viper.GetDuration("cache.cleanup_interval"))
-}
-
-func connectInternalServicesToHttpHandlers(cch *cache.Cache, strg *postgres.Storage) endpoint.HttpHandler {
-	return endpoint.NewInternalServicesForHttpHandlers(cch, strg)
-}
-
-func doProductHandler(natsConn *nats.Conn, strg *postgres.Storage) {
-	productHandler, err := producthandler.NewProductHandler(natsConn)
+func mustConnectNats() {
+	var err error
+	natsConn, err = nats.Connect(viper.GetString("nats-server.host"))
 	if err != nil {
-		logrus.Fatal("failed to connect to nats")
+		logrus.Fatalf("failed to connect to nats server, error: %v", err)
 	}
-	for {
-		product, ok := <-productHandler.C
-		if !ok {
-			break
+
+	natsConn.SetErrorHandler(func(conn *nats.Conn, subscription *nats.Subscription, err error) {
+		if errors.Is(err, nats.ErrSlowConsumer) {
+			logrus.Error(conn.ConnectedUrl(), " - ", subscription.Subject, " - ", err.Error())
+		} else {
+			logrus.Error("unexpected nats error: ", err.Error())
 		}
-		postgresservice.PutDataInTable(strg, product)
+	})
+}
+
+func initProductProcessing() {
+	var err error
+	productHandler, err = product.NewHandler(natsConn)
+	if err != nil {
+		logrus.Fatalf("failed to connect to nats, error: %v", err)
 	}
+
+	go func() {
+		for event := range productHandler.C {
+			_, err = productTable.Put(event.Name, event.Data)
+			if err != nil {
+				logrus.Errorf("failed to put in table, error: %v", err)
+			}
+		}
+	}()
 }

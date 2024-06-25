@@ -1,7 +1,6 @@
 package cache
 
 import (
-	"github.com/sirupsen/logrus"
 	"sync"
 	"time"
 )
@@ -10,7 +9,8 @@ type Cache struct {
 	mx              sync.Mutex
 	cleanupInterval time.Duration
 	items           map[int]Item
-	list            List
+	list            *List
+	keysCount       int
 }
 
 type Item struct {
@@ -20,11 +20,9 @@ type Item struct {
 
 func NewCache(cleanupInterval time.Duration) *Cache {
 	m := make(map[int]Item)
-	list := NewList()
 	c := &Cache{
 		cleanupInterval: cleanupInterval,
 		items:           m,
-		list:            list,
 	}
 	c.StartGC()
 	return c
@@ -37,33 +35,35 @@ func (c *Cache) PutKey(key int, value []byte) {
 		Value: value,
 		alive: time.Now(),
 	}
-	list, found := c.list.FindInList(key)
-	if !found {
-		list.PutInList(key)
+	if c.list == nil {
+		c.list = NewList(key)
+		c.keysCount++
 		return
 	}
-	list.DeleteFromList(key)
-	list.PutInList(key)
+	c.list.Put(key)
+	c.keysCount++
 }
 
 func (c *Cache) DeleteKey(key int) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
+
 	delete(c.items, key)
-	c.list.DeleteFromList(key)
+
+	c.list.Delete(key)
 }
 
-func (c *Cache) ShowKey(key int) ([]byte, bool) {
+func (c *Cache) Get(key int) ([]byte, bool) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
+
 	value, ok := c.items[key]
 	if !ok {
-		logrus.Infof("there is no such key: %v in cacheservice", key)
 		return nil, false
 	}
-	list := c.list.DeleteFromList(key)
-	list.PutInList(key)
-	logrus.Infof("value of key: %v is: %v", key, string(value.Value))
+
+	list := c.list.Delete(key)
+	list.Put(key)
 	return value.Value, true
 }
 
@@ -74,11 +74,20 @@ func (c *Cache) StartGC() {
 func (c *Cache) GC() {
 	for {
 		time.Sleep(c.cleanupInterval)
-		for key, value := range c.items {
-			logrus.Infof("check value to delete, key: %v, time lost: %v", key, time.Since(value.alive))
-			if time.Since(value.alive) > c.cleanupInterval {
-				c.DeleteKey(key)
-			}
+
+		c.mx.Lock()
+		if c.keysCount == 0 {
+			continue
 		}
+
+		amountKeysToDelete := c.keysCount / 2
+		for i := 0; i < amountKeysToDelete; i++ {
+			c.DeleteKey(c.list.Key)
+			c.list = c.list.Next
+		}
+
+		c.keysCount -= amountKeysToDelete
+
+		c.mx.Unlock()
 	}
 }

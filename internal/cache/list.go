@@ -8,41 +8,44 @@ type List struct {
 	Key      int
 }
 
-func NewList() List {
-	return List{}
+func NewList(key int) *List {
+	return &List{Key: key}
 }
 
-func (l *List) PutInList(key int) *List {
+func (l *List) Put(key int) *List {
 	if l.Next == nil {
 		l.Next = &List{Key: key,
 			Previous: l}
 		return l.Next
 	}
-	return l.Next.PutInList(key)
+	return l.Next.Put(key)
 }
 
-func (l *List) DeleteFromList(key int) *List {
-	if l.Next == nil {
-		return l
+func (l *List) Delete(key int) *List {
+	if l.Key == key {
+		l.Previous.Next = l.Next
+		l.Next.Previous = l.Previous
+		return l.Next
 	}
-	if l.Next.Key == key {
-		l.Next = l.Next.Next
-		if l.Next != nil {
-			l.Next.Previous = l
-		}
-		return l
-	}
-	return l.Next.DeleteFromList(key)
+
+	return l.Next.Delete(key)
 }
 
-func (l *List) FindInList(key int) (*List, bool) {
-	if l.Next == nil {
-		return l, false
+func (l *List) Find(key int) (*List, bool) {
+	if l.Key == key {
+		return l, true
 	}
-	if l.Next.Key == key {
-		return l.Next, true
+	if l.Next != nil {
+		return l.Next.Find(key)
 	}
-	return l.Next.FindInList(key)
+	return l, false
+}
+
+func (l *List) GetCountNode(count int) *List {
+	if count == 0 {
+		return l
+	}
+	return l.GetCountNode(count - 1)
 }
 
 func (l *List) PrintList() *List {
