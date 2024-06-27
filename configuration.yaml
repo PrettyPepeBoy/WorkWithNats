@@ -6,12 +6,22 @@ product:
     username: postgres
     password: POSTGRES_PASSWORD
 
+user:
+  table:
+    host: localhost
+    port: 5432
+    database: postgres
+    username: postgres
+    password: POSTGRES_PASSWORD
+
 cache:
-  cleanup_interval: 60s
+  cleanup_interval: 360s
 
 http-server:
   port: 8000
 
 nats-server:
   host: 127.0.0.1:4222
-  subject: events.product
+  subjects:
+    product: event.product
+    user: event.user

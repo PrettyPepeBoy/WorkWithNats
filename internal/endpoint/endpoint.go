@@ -3,17 +3,17 @@ package endpoint
 import (
 	"errors"
 	"github.com/PrettyPepeBoy/WorkWithNats/internal/cache"
-	"github.com/PrettyPepeBoy/WorkWithNats/internal/product"
+	"github.com/PrettyPepeBoy/WorkWithNats/internal/objects/product"
 	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
 )
 
 type HttpHandler struct {
-	productCache *cache.Cache
+	productCache *cache.Cache[int, []byte]
 	productTable *product.Table
 }
 
-func NewHttpHandler(productCache *cache.Cache, productTable *product.Table) *HttpHandler {
+func NewHttpHandler(productCache *cache.Cache[int, []byte], productTable *product.Table) *HttpHandler {
 	return &HttpHandler{
 		productCache: productCache,
 		productTable: productTable,
@@ -22,6 +22,7 @@ func NewHttpHandler(productCache *cache.Cache, productTable *product.Table) *Htt
 
 func (h *HttpHandler) Handle(ctx *fasthttp.RequestCtx) {
 	switch string(ctx.Path()) {
+
 	case "/api/v1/product":
 		switch string(ctx.Method()) {
 		case fasthttp.MethodGet:
@@ -29,6 +30,14 @@ func (h *HttpHandler) Handle(ctx *fasthttp.RequestCtx) {
 		default:
 			ctx.SetStatusCode(fasthttp.StatusNotFound)
 		}
+
+	case "/api/v1/user":
+		switch string(ctx.Method()) {
+		case fasthttp.MethodGet:
+		default:
+			ctx.SetStatusCode(fasthttp.StatusNotFound)
+		}
+
 	default:
 		ctx.SetStatusCode(fasthttp.StatusNotFound)
 	}

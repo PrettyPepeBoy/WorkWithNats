@@ -38,7 +38,7 @@ func NewHandler(natsConn *nats.Conn) (*Handler, error) {
 	}
 
 	var err error
-	subject := viper.GetString("nats-server.subject")
+	subject := viper.GetString("nats-server.subjects.product")
 	h.natsSubs, err = natsConn.Subscribe(subject, h.Process)
 	if err != nil {
 		logrus.Errorf("[NewHandler] failed to subscribe to %s, error: %v", subject, err)
@@ -49,6 +49,7 @@ func NewHandler(natsConn *nats.Conn) (*Handler, error) {
 
 func (h *Handler) Process(msg *nats.Msg) {
 	var product Product
+	logrus.Infof("recieved message: %s", string(msg.Data))
 	err := json.Unmarshal(msg.Data, &product)
 	if err != nil {
 		logrus.Warn("failed to unmarshal message data to product, error: ", err)

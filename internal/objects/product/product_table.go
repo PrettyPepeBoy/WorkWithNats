@@ -40,11 +40,13 @@ func NewTable() (*Table, error) {
 	putInTableStmt, err := conn.Prepare(context.Background(), "Put", `INSERT INTO products(name, json_data) VALUES ($1, $2) RETURNING id`)
 	if err != nil {
 		logrus.Errorf("failed to prepare createTableStmt, error: %v", err)
+		return nil, err
 	}
 
 	getFromTableStmt, err := conn.Prepare(context.Background(), "GetById", `SELECT json_data FROM products WHERE id = $1`)
 	if err != nil {
 		logrus.Errorf("failed to prepare getFromTableStmt, error: %v", err)
+		return nil, err
 	}
 
 	return &Table{db: conn,

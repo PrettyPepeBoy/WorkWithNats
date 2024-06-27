@@ -2,26 +2,26 @@ package cache
 
 import "fmt"
 
-type List struct {
-	Next     *List
-	Previous *List
-	Key      int
+type KeysList[k Key] struct {
+	Next     *KeysList[k]
+	Previous *KeysList[k]
+	Key      k
 }
 
-func NewList(key int) *List {
-	return &List{Key: key}
+func NewList[k Key](key k) *KeysList[k] {
+	return &KeysList[k]{Key: key}
 }
 
-func (l *List) Put(key int) *List {
+func (l *KeysList[k]) Put(key k) *KeysList[k] {
 	if l.Next == nil {
-		l.Next = &List{Key: key,
+		l.Next = &KeysList[k]{Key: key,
 			Previous: l}
 		return l.Next
 	}
 	return l.Next.Put(key)
 }
 
-func (l *List) Delete(key int) *List {
+func (l *KeysList[k]) Delete(key k) *KeysList[k] {
 	if l.Key == key {
 		l.Previous.Next = l.Next
 		l.Next.Previous = l.Previous
@@ -31,7 +31,7 @@ func (l *List) Delete(key int) *List {
 	return l.Next.Delete(key)
 }
 
-func (l *List) Find(key int) (*List, bool) {
+func (l *KeysList[k]) Find(key k) (*KeysList[k], bool) {
 	if l.Key == key {
 		return l, true
 	}
@@ -41,14 +41,14 @@ func (l *List) Find(key int) (*List, bool) {
 	return l, false
 }
 
-func (l *List) GetCountNode(count int) *List {
+func (l *KeysList[k]) GetCountNode(count int) *KeysList[k] {
 	if count == 0 {
 		return l
 	}
 	return l.GetCountNode(count - 1)
 }
 
-func (l *List) PrintList() *List {
+func (l *KeysList[k]) PrintList() *KeysList[k] {
 	fmt.Println(l.Key)
 	if l.Next != nil {
 		return l.Next.PrintList()

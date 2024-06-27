@@ -5,11 +5,13 @@ import (
 	"time"
 )
 
-type Cache struct {
+type Key comparable
+
+type Cache[k Key, v any] struct {
 	mx              sync.Mutex
 	cleanupInterval time.Duration
-	items           map[int]Item
-	list            *List
+	items           map[k]v
+	list            *KeysList[k]
 	keysCount       int
 }
 
@@ -18,9 +20,9 @@ type Item struct {
 	alive time.Time
 }
 
-func NewCache(cleanupInterval time.Duration) *Cache {
-	m := make(map[int]Item)
-	c := &Cache{
+func NewCache[Key comparable, Value any](cleanupInterval time.Duration) *Cache[Key, Value] {
+	m := make(map[Key]Value)
+	c := &Cache[Key, Value]{
 		cleanupInterval: cleanupInterval,
 		items:           m,
 	}
@@ -28,13 +30,10 @@ func NewCache(cleanupInterval time.Duration) *Cache {
 	return c
 }
 
-func (c *Cache) PutKey(key int, value []byte) {
+func (c *Cache[Key, Value]) PutKey(key Key, value Value) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
-	c.items[key] = Item{
-		Value: value,
-		alive: time.Now(),
-	}
+	c.items[key] = value
 	if c.list == nil {
 		c.list = NewList(key)
 		c.keysCount++
@@ -44,7 +43,7 @@ func (c *Cache) PutKey(key int, value []byte) {
 	c.keysCount++
 }
 
-func (c *Cache) DeleteKey(key int) {
+func (c *Cache[Key, Value]) DeleteKey(key Key) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -53,25 +52,25 @@ func (c *Cache) DeleteKey(key int) {
 	c.list.Delete(key)
 }
 
-func (c *Cache) Get(key int) ([]byte, bool) {
+func (c *Cache[Key, Value]) Get(key Key) (Value, bool) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
 	value, ok := c.items[key]
 	if !ok {
-		return nil, false
+		return value, false
 	}
 
 	list := c.list.Delete(key)
 	list.Put(key)
-	return value.Value, true
+	return value, true
 }
 
-func (c *Cache) StartGC() {
+func (c *Cache[Key, Value]) StartGC() {
 	go c.GC()
 }
 
-func (c *Cache) GC() {
+func (c *Cache[Key, Value]) GC() {
 	for {
 		time.Sleep(c.cleanupInterval)
 

@@ -5,6 +5,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// todo correct answers
 type response struct {
 	StatusCode int    `json:"statusCode"`
 	Data       []byte `json:"data"`
