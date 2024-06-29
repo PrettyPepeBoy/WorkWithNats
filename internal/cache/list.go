@@ -1,57 +1,105 @@
 package cache
 
-import "fmt"
-
-type KeysList[k Key] struct {
-	Next     *KeysList[k]
-	Previous *KeysList[k]
-	Key      k
+type Element[K comparable] struct {
+	next, prev *Element[K]
+	list       *List[K]
+	Value      K
 }
 
-func NewList[k Key](key k) *KeysList[k] {
-	return &KeysList[k]{Key: key}
+func (e *Element[K]) Next() *Element[K] {
+	if n := e.next; e.list != nil && n != &e.list.root {
+		return n
+	}
+	return nil
 }
 
-func (l *KeysList[k]) Put(key k) *KeysList[k] {
-	if l.Next == nil {
-		l.Next = &KeysList[k]{Key: key,
-			Previous: l}
-		return l.Next
+func (e *Element[K]) Prev() *Element[K] {
+	if p := e.prev; e.list != nil && p != &e.list.root {
+		return p
 	}
-	return l.Next.Put(key)
+	return nil
 }
 
-func (l *KeysList[k]) Delete(key k) *KeysList[k] {
-	if l.Key == key {
-		l.Previous.Next = l.Next
-		l.Next.Previous = l.Previous
-		return l.Next
-	}
-
-	return l.Next.Delete(key)
+type List[K comparable] struct {
+	root          Element[K]
+	lastInsert    *Element[K]
+	mediterranean Element[K]
+	len           int
+	threshold     int
 }
 
-func (l *KeysList[k]) Find(key k) (*KeysList[k], bool) {
-	if l.Key == key {
-		return l, true
-	}
-	if l.Next != nil {
-		return l.Next.Find(key)
-	}
-	return l, false
+func NewList[K comparable](threshold int) *List[K] {
+	return new(List[K]).init(threshold)
 }
 
-func (l *KeysList[k]) GetCountNode(count int) *KeysList[k] {
-	if count == 0 {
-		return l
-	}
-	return l.GetCountNode(count - 1)
-}
-
-func (l *KeysList[k]) PrintList() *KeysList[k] {
-	fmt.Println(l.Key)
-	if l.Next != nil {
-		return l.Next.PrintList()
-	}
+func (l *List[K]) init(threshold int) *List[K] {
+	l.root.prev = &l.root
+	l.root.next = &l.root
+	l.root.list = l
+	l.lastInsert = &l.root
+	l.threshold = threshold
+	l.len = 0
 	return l
+}
+
+func (l *List[K]) putElementInList(e *Element[K]) *Element[K] {
+	e.prev = l.lastInsert
+	e.prev.next = e
+	l.lastInsert = e
+
+	l.len++
+	if l.len == l.threshold/2 {
+		l.mediterranean = *e
+	}
+	return e
+}
+
+func (l *List[K]) Put(v K) *Element[K] {
+	e := &Element[K]{Value: v,
+		list: l,
+	}
+	return l.putElementInList(e)
+}
+
+func (l *List[K]) removeElementFromList(e *Element[K]) {
+	e.prev.next = e.next
+	if e.next != nil {
+		e.next.prev = e.prev
+	}
+
+	if l.lastInsert.Value == e.Value {
+		l.lastInsert = e.prev
+	}
+
+	e.next = nil
+	e.prev = nil
+	e.list = nil
+	l.len--
+}
+
+func (l *List[K]) Remove(v K) {
+	if e := l.findElem(v); e != nil {
+		l.removeElementFromList(e)
+	}
+}
+
+func (l *List[K]) front() *Element[K] {
+	if l == nil {
+		return nil
+	}
+	return l.root.next
+}
+
+func (l *List[K]) findElem(v K) *Element[K] {
+	for e := l.front(); e != nil; e = e.Next() {
+		if e.Value == v {
+			return e
+		}
+	}
+	return nil
+}
+
+func (l *List[K]) PushFront() {
+	l.root.next = &l.mediterranean
+	l.root.next.prev = &l.root
 }

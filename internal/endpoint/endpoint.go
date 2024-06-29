@@ -6,6 +6,7 @@ import (
 	"github.com/PrettyPepeBoy/WorkWithNats/internal/objects/product"
 	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
+	"reflect"
 )
 
 type HttpHandler struct {
@@ -34,6 +35,14 @@ func (h *HttpHandler) Handle(ctx *fasthttp.RequestCtx) {
 	case "/api/v1/user":
 		switch string(ctx.Method()) {
 		case fasthttp.MethodGet:
+		default:
+			ctx.SetStatusCode(fasthttp.StatusNotFound)
+		}
+
+	case "/api/v1/cache":
+		switch string(ctx.Method()) {
+		case fasthttp.MethodGet:
+			h.getCache(ctx)
 		default:
 			ctx.SetStatusCode(fasthttp.StatusNotFound)
 		}
@@ -68,6 +77,17 @@ func (h *HttpHandler) getProduct(ctx *fasthttp.RequestCtx) {
 	}
 
 	h.productCache.PutKey(id, data)
+
+	WriteJson(ctx, data)
+}
+
+func (h *HttpHandler) getCache(ctx *fasthttp.RequestCtx) {
+	keys, amount := h.productCache.GetAllKeys()
+	data := make([]int64, amount)
+	for _, elem := range keys {
+		key := reflect.ValueOf(elem).Int()
+		data = append(data, key)
+	}
 
 	WriteJson(ctx, data)
 }

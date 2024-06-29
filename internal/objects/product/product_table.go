@@ -12,9 +12,10 @@ import (
 )
 
 type Table struct {
-	db               *pgx.Conn
-	putInTableStmt   *pgconn.StatementDescription
-	getFromTableStmt *pgconn.StatementDescription
+	db                  *pgx.Conn
+	putInTableStmt      *pgconn.StatementDescription
+	getFromTableStmt    *pgconn.StatementDescription
+	deleteFromTableStmt *pgconn.StatementDescription
 }
 
 var (
@@ -49,9 +50,16 @@ func NewTable() (*Table, error) {
 		return nil, err
 	}
 
+	deleteFromTableStmt, err := conn.Prepare(context.Background(), "DeleteById", `DELETE FROM products where id = $1`)
+	if err != nil {
+		logrus.Errorf("failed to prepare deleteFromTableStmt, error: %v", err)
+		return nil, err
+	}
+
 	return &Table{db: conn,
-		putInTableStmt:   putInTableStmt,
-		getFromTableStmt: getFromTableStmt,
+		putInTableStmt:      putInTableStmt,
+		getFromTableStmt:    getFromTableStmt,
+		deleteFromTableStmt: deleteFromTableStmt,
 	}, nil
 }
 
@@ -72,4 +80,16 @@ func (s *Table) GetById(id int) ([]byte, error) {
 		return nil, err
 	}
 	return data, nil
+}
+
+func (s *Table) DeleteById(id int) error {
+	var err error
+	err = s.db.QueryRow(context.Background(), s.deleteFromTableStmt.Name, id).Scan()
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return nil
 }

@@ -2,57 +2,44 @@ package cache
 
 import (
 	"sync"
-	"time"
 )
 
-type Key comparable
-
-type Cache[k Key, v any] struct {
-	mx              sync.Mutex
-	cleanupInterval time.Duration
-	items           map[k]v
-	list            *KeysList[k]
-	keysCount       int
+type Cache[K comparable, V any] struct {
+	mx       sync.Mutex
+	items    map[K]V
+	list     *List[K]
+	elemChan chan Element[K]
 }
 
-type Item struct {
-	Value []byte
-	alive time.Time
-}
-
-func NewCache[Key comparable, Value any](cleanupInterval time.Duration) *Cache[Key, Value] {
-	m := make(map[Key]Value)
-	c := &Cache[Key, Value]{
-		cleanupInterval: cleanupInterval,
-		items:           m,
+func NewCache[K comparable, V any](listsThreshold int) *Cache[K, V] {
+	m := make(map[K]V)
+	c := &Cache[K, V]{
+		items:    m,
+		list:     NewList[K](listsThreshold),
+		elemChan: make(chan Element[K]),
 	}
-	c.StartGC()
+	c.StartClearCache()
 	return c
 }
 
-func (c *Cache[Key, Value]) PutKey(key Key, value Value) {
+func (c *Cache[K, V]) PutKey(key K, value V) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 	c.items[key] = value
-	if c.list == nil {
-		c.list = NewList(key)
-		c.keysCount++
-		return
-	}
 	c.list.Put(key)
-	c.keysCount++
+	if c.list.len == c.list.threshold {
+		c.elemChan <- c.list.mediterranean
+	}
 }
 
-func (c *Cache[Key, Value]) DeleteKey(key Key) {
+func (c *Cache[K, V]) RemoveKey(key K) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
-
 	delete(c.items, key)
-
-	c.list.Delete(key)
+	c.list.Remove(key)
 }
 
-func (c *Cache[Key, Value]) Get(key Key) (Value, bool) {
+func (c *Cache[K, V]) Get(key K) (V, bool) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -61,32 +48,30 @@ func (c *Cache[Key, Value]) Get(key Key) (Value, bool) {
 		return value, false
 	}
 
-	list := c.list.Delete(key)
-	list.Put(key)
+	c.list.Remove(key)
+	c.list.Put(key)
 	return value, true
 }
 
-func (c *Cache[Key, Value]) StartGC() {
-	go c.GC()
+func (c *Cache[K, V]) GetAllKeys() ([]K, int) {
+	keys := make([]K, c.list.len)
+	for key := range c.items {
+		keys = append(keys, key)
+	}
+	return keys, c.list.len
 }
 
-func (c *Cache[Key, Value]) GC() {
+func (c *Cache[K, V]) StartClearCache() {
+	go c.clearCache()
+}
+
+func (c *Cache[K, V]) clearCache() {
 	for {
-		time.Sleep(c.cleanupInterval)
-
-		c.mx.Lock()
-		if c.keysCount == 0 {
-			continue
+		<-c.elemChan
+		for e := c.list.front(); e != nil; e.Next() {
+			c.RemoveKey(e.Value)
 		}
-
-		amountKeysToDelete := c.keysCount / 2
-		for i := 0; i < amountKeysToDelete; i++ {
-			c.DeleteKey(c.list.Key)
-			c.list = c.list.Next
-		}
-
-		c.keysCount -= amountKeysToDelete
-
-		c.mx.Unlock()
+		c.list.PushFront()
+		c.list.len = c.list.threshold / 2
 	}
 }

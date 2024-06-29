@@ -5,7 +5,7 @@ import (
 	"errors"
 	"github.com/PrettyPepeBoy/WorkWithNats/internal/cache"
 	"github.com/PrettyPepeBoy/WorkWithNats/internal/endpoint"
-	product2 "github.com/PrettyPepeBoy/WorkWithNats/internal/objects/product"
+	"github.com/PrettyPepeBoy/WorkWithNats/internal/objects/product"
 	"github.com/nats-io/nats.go"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -17,8 +17,8 @@ import (
 var (
 	natsConn       *nats.Conn
 	productCache   *cache.Cache[int, []byte]
-	productTable   *product2.Table
-	productHandler *product2.Handler
+	productTable   *product.Table
+	productHandler *product.Handler
 )
 
 func main() {
@@ -27,8 +27,8 @@ func main() {
 	mustInitConfig()
 	mustConnectNats()
 
-	productCache = cache.NewCache[int, []byte](viper.GetDuration("cache.cleanup_interval"))
-	productTable, err = product2.NewTable()
+	productCache = cache.NewCache[int, []byte](viper.GetInt("cache.cleanup"))
+	productTable, err = product.NewTable()
 	if err != nil {
 		logrus.Fatal(err.Error())
 	}
@@ -76,7 +76,7 @@ func mustConnectNats() {
 
 func initProductProcessing() {
 	var err error
-	productHandler, err = product2.NewHandler(natsConn)
+	productHandler, err = product.NewHandler(natsConn)
 	if err != nil {
 		logrus.Fatalf("failed to connect to nats, error: %v", err)
 	}

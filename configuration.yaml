@@ -15,7 +15,7 @@ user:
     password: POSTGRES_PASSWORD
 
 cache:
-  cleanup_interval: 360s
+  cleanup: 50
 
 http-server:
   port: 8000

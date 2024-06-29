@@ -68,6 +68,14 @@ func (h *Handler) Process(msg *nats.Msg) {
 }
 
 func (h *Handler) validateProductData(product Product) bool {
+	if len(product.Name) == 0 {
+		return false
+	}
+
+	if len(product.Category) == 0 {
+		return false
+	}
+
 	if !h.correctSymbols(product.Name) {
 		return false
 	}
