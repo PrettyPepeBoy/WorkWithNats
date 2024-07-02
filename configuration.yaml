@@ -15,7 +15,8 @@ user:
     password: POSTGRES_PASSWORD
 
 cache:
-  cleanup: 50
+  threshold: 250
+  buckets_amount: 8
 
 http-server:
   port: 8000

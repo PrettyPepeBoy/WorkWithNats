@@ -16,7 +16,7 @@ import (
 
 var (
 	natsConn       *nats.Conn
-	productCache   *cache.Cache[int, []byte]
+	productCache   []cache.Cache[int, []byte]
 	productTable   *product.Table
 	productHandler *product.Handler
 )
@@ -27,7 +27,7 @@ func main() {
 	mustInitConfig()
 	mustConnectNats()
 
-	productCache = cache.NewCache[int, []byte](viper.GetInt("cache.cleanup"))
+	productCache = cache.NewCache[int, []byte]()
 	productTable, err = product.NewTable()
 	if err != nil {
 		logrus.Fatal(err.Error())

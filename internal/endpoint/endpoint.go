@@ -6,15 +6,14 @@ import (
 	"github.com/PrettyPepeBoy/WorkWithNats/internal/objects/product"
 	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
-	"reflect"
 )
 
 type HttpHandler struct {
-	productCache *cache.Cache[int, []byte]
+	productCache []cache.Cache[int, []byte]
 	productTable *product.Table
 }
 
-func NewHttpHandler(productCache *cache.Cache[int, []byte], productTable *product.Table) *HttpHandler {
+func NewHttpHandler(productCache []cache.Cache[int, []byte], productTable *product.Table) *HttpHandler {
 	return &HttpHandler{
 		productCache: productCache,
 		productTable: productTable,
@@ -58,14 +57,14 @@ func (h *HttpHandler) getProduct(ctx *fasthttp.RequestCtx) {
 		WriteErrorResponse(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
-
-	data, find := h.productCache.Get(id)
+	index := ProductHash(id)
+	data, find := h.productCache[index].Get(id)
 	if find {
 		WriteResponse(ctx, fasthttp.StatusOK, data)
 		return
 	}
 
-	data, err = h.productTable.GetById(id)
+	databaseData, err := h.productTable.GetById(id)
 	if err != nil {
 		if errors.Is(err, product.ErrRowNotExist) {
 			ctx.SetStatusCode(fasthttp.StatusNoContent)
@@ -76,18 +75,13 @@ func (h *HttpHandler) getProduct(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	h.productCache.PutKey(id, data)
-
-	WriteJson(ctx, data)
+	h.productCache[index].PutKey(id, databaseData)
+	ctx.SetBody(databaseData)
+	//WriteJson(ctx, data)
 }
 
 func (h *HttpHandler) getCache(ctx *fasthttp.RequestCtx) {
-	keys, amount := h.productCache.GetAllKeys()
-	data := make([]int64, amount)
-	for _, elem := range keys {
-		key := reflect.ValueOf(elem).Int()
-		data = append(data, key)
-	}
-
-	WriteJson(ctx, data)
+	keys := h.productCache[1].GetAllKeys()
+	//data := make([]int64, amount)
+	WriteJson(ctx, keys)
 }
