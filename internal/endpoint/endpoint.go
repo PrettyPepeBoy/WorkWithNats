@@ -76,12 +76,22 @@ func (h *HttpHandler) getProduct(ctx *fasthttp.RequestCtx) {
 	}
 
 	h.productCache[index].PutKey(id, databaseData)
+
 	ctx.SetBody(databaseData)
-	//WriteJson(ctx, data)
 }
 
 func (h *HttpHandler) getCache(ctx *fasthttp.RequestCtx) {
-	keys := h.productCache[1].GetAllKeys()
-	//data := make([]int64, amount)
-	WriteJson(ctx, keys)
+	data := make([]byte, 0, 2048)
+	for i := 0; i < len(h.productCache); i++ {
+		rawByte, err := h.productCache[i].GetAllRawData()
+		if err != nil {
+			logrus.Error("failed to marshal json, error:", err)
+			WriteErrorResponse(ctx, fasthttp.StatusInternalServerError, err.Error())
+		}
+
+		data = append(data, rawByte...)
+	}
+
+	ctx.SetStatusCode(fasthttp.StatusOK)
+	ctx.SetBody(data)
 }

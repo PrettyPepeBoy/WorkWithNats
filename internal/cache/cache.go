@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"encoding/json"
 	"github.com/PrettyPepeBoy/WorkWithNats/pkg/list"
 	"github.com/spf13/viper"
 	"sync"
@@ -84,14 +85,28 @@ func (c *Cache[K, V]) Get(key K) (any, bool) {
 	return item.Data, true
 }
 
-func (c *Cache[K, V]) GetAllKeys() []K {
+type Data[K comparable, V any] struct {
+	Key   K
+	Value V
+}
+
+func (c *Cache[K, V]) GetAllRawData() ([]byte, error) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
-	keys := make([]K, 0, len(c.items))
+
+	data := make([]Data[K, V], 0, len(c.items))
 	for key := range c.items {
-		keys = append(keys, key)
+		data = append(data, Data[K, V]{
+			Key:   key,
+			Value: c.items[key].Data,
+		})
 	}
-	return keys
+
+	rawByte, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	return rawByte, nil
 }
 
 func (c *Cache[K, V]) StartClearCache() {

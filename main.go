@@ -12,6 +12,9 @@ import (
 	"github.com/valyala/fasthttp"
 	"os/signal"
 	"syscall"
+
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
 var (
@@ -26,6 +29,7 @@ func main() {
 
 	mustInitConfig()
 	mustConnectNats()
+	//runMigrations()
 
 	productCache = cache.NewCache[int, []byte]()
 	productTable, err = product.NewTable()
@@ -90,3 +94,19 @@ func initProductProcessing() {
 		}
 	}()
 }
+
+//func runMigrations() {
+//	p := os.Getenv("POSTGRES_PASSWORD")
+//	m, err := migrate.New("file:./schema", "postgresql://postgres:"+p+"@database:5432/postgres?sslmode=disable")
+//	if err != nil {
+//		logrus.Fatalf("failed to migrate, error: %v", err)
+//	}
+//
+//	if err = m.Up(); err != nil {
+//		if errors.Is(err, migrate.ErrNoChange) {
+//			err = nil
+//			return
+//		}
+//		logrus.Fatalf("failed to migrate, error: %v", err)
+//	}
+//}

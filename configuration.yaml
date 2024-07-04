@@ -1,14 +1,6 @@
 product:
   table:
-    host: localhost
-    port: 5432
-    database: postgres
-    username: postgres
-    password: POSTGRES_PASSWORD
-
-user:
-  table:
-    host: localhost
+    host: database
     port: 5432
     database: postgres
     username: postgres
@@ -22,7 +14,7 @@ http-server:
   port: 8000
 
 nats-server:
-  host: 127.0.0.1:4222
+  host: nats:4222
   subjects:
     product: event.product
     user: event.user
