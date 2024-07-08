@@ -1,6 +1,7 @@
 package endpoint
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/PrettyPepeBoy/WorkWithNats/internal/cache"
 	"github.com/PrettyPepeBoy/WorkWithNats/internal/objects/product"
@@ -9,11 +10,11 @@ import (
 )
 
 type HttpHandler struct {
-	productCache []cache.Cache[int, []byte]
+	productCache *cache.Cache[int, []byte]
 	productTable *product.Table
 }
 
-func NewHttpHandler(productCache []cache.Cache[int, []byte], productTable *product.Table) *HttpHandler {
+func NewHttpHandler(productCache *cache.Cache[int, []byte], productTable *product.Table) *HttpHandler {
 	return &HttpHandler{
 		productCache: productCache,
 		productTable: productTable,
@@ -27,6 +28,14 @@ func (h *HttpHandler) Handle(ctx *fasthttp.RequestCtx) {
 		switch string(ctx.Method()) {
 		case fasthttp.MethodGet:
 			h.getProduct(ctx)
+		default:
+			ctx.SetStatusCode(fasthttp.StatusNotFound)
+		}
+
+	case "/api/v1/product/all":
+		switch string(ctx.Method()) {
+		case fasthttp.MethodGet:
+			h.getAllProducts(ctx)
 		default:
 			ctx.SetStatusCode(fasthttp.StatusNotFound)
 		}
@@ -57,8 +66,8 @@ func (h *HttpHandler) getProduct(ctx *fasthttp.RequestCtx) {
 		WriteErrorResponse(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
-	index := ProductHash(id)
-	data, find := h.productCache[index].Get(id)
+
+	data, find := h.productCache.Get(id)
 	if find {
 		WriteResponse(ctx, fasthttp.StatusOK, data)
 		return
@@ -75,15 +84,49 @@ func (h *HttpHandler) getProduct(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	h.productCache[index].PutKey(id, databaseData)
+	var p product.Product
+	err = json.Unmarshal(databaseData, &p)
+	if err != nil {
+		logrus.Error("failed to unmarshal json")
+		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
+		return
+	}
 
-	ctx.SetBody(databaseData)
+	ProductHTMLResponse(ctx, p)
+
+	h.productCache.PutKey(id, databaseData)
+}
+
+func (h *HttpHandler) getAllProducts(ctx *fasthttp.RequestCtx) {
+	rawValues, err := h.productTable.GetAllFromTable()
+	if err != nil {
+		logrus.Error("failed to get all products from table")
+		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
+		return
+	}
+
+	var products product.Products
+	products.Product = make([]product.Product, len(rawValues))
+
+	var p product.Product
+	for i := 0; i < len(rawValues); i++ {
+		err = json.Unmarshal(rawValues[i], &p)
+		if err != nil {
+			logrus.Error("failed to unmarshal json")
+			ctx.SetStatusCode(fasthttp.StatusInternalServerError)
+			return
+		}
+		products.Product[i] = p
+	}
+
+	ProductsHTMLResponse(ctx, products)
+	ctx.SetStatusCode(fasthttp.StatusOK)
 }
 
 func (h *HttpHandler) getCache(ctx *fasthttp.RequestCtx) {
 	data := make([]byte, 0, 2048)
-	for i := 0; i < len(h.productCache); i++ {
-		rawByte, err := h.productCache[i].GetAllRawData()
+	for i := 0; i < len(h.productCache.Buckets); i++ {
+		rawByte, err := h.productCache.Buckets[i].GetAllRawData()
 		if err != nil {
 			logrus.Error("failed to marshal json, error:", err)
 			WriteErrorResponse(ctx, fasthttp.StatusInternalServerError, err.Error())

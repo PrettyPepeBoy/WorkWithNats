@@ -19,7 +19,7 @@ import (
 
 var (
 	natsConn       *nats.Conn
-	productCache   []cache.Cache[int, []byte]
+	productCache   *cache.Cache[int, []byte]
 	productTable   *product.Table
 	productHandler *product.Handler
 )
@@ -29,7 +29,6 @@ func main() {
 
 	mustInitConfig()
 	mustConnectNats()
-	//runMigrations()
 
 	productCache = cache.NewCache[int, []byte]()
 	productTable, err = product.NewTable()
@@ -94,19 +93,3 @@ func initProductProcessing() {
 		}
 	}()
 }
-
-//func runMigrations() {
-//	p := os.Getenv("POSTGRES_PASSWORD")
-//	m, err := migrate.New("file:./schema", "postgresql://postgres:"+p+"@database:5432/postgres?sslmode=disable")
-//	if err != nil {
-//		logrus.Fatalf("failed to migrate, error: %v", err)
-//	}
-//
-//	if err = m.Up(); err != nil {
-//		if errors.Is(err, migrate.ErrNoChange) {
-//			err = nil
-//			return
-//		}
-//		logrus.Fatalf("failed to migrate, error: %v", err)
-//	}
-//}

@@ -4,14 +4,17 @@ import (
 	"encoding/json"
 	"github.com/PrettyPepeBoy/WorkWithNats/pkg/list"
 	"github.com/spf13/viper"
+	"reflect"
 	"sync"
 )
 
-type Cache[K comparable, V any] struct {
+// брать хэш от айди для более равномерного распределения
+
+type Bucket[K comparable, V any] struct {
 	mx        sync.Mutex
 	items     map[K]Item[K, V]
 	list      *list.List[K]
-	elemChan  chan struct{}
+	cleanChan chan struct{}
 	threshold int
 }
 
@@ -20,31 +23,35 @@ type Item[K comparable, V any] struct {
 	Data    V
 }
 
-func NewCache[K comparable, V any]() []Cache[K, V] {
-	bucketsAmount := viper.GetInt("cache.buckets_amount")
-	threshold := viper.GetInt("cache.threshold")
-
-	c := make([]Cache[K, V], bucketsAmount)
-	for i := range c {
-		c[i] = *newCacheBucket[K, V]()
-		c[i].threshold = threshold
-	}
-
-	return c
+type Cache[K comparable, V any] struct {
+	Buckets []Bucket[K, V]
 }
 
-func newCacheBucket[K comparable, V any]() *Cache[K, V] {
+func NewCache[K comparable, V any]() *Cache[K, V] {
+	bucketsAmount := viper.GetInt("cache.buckets_amount")
+	threshold := viper.GetInt("cache.elems.threshold")
+	var c Cache[K, V]
+	c.Buckets = make([]Bucket[K, V], bucketsAmount)
+	for i := range c.Buckets {
+		c.Buckets[i] = *newCacheBucket[K, V]()
+		c.Buckets[i].threshold = threshold
+	}
+
+	return &c
+}
+
+func newCacheBucket[K comparable, V any]() *Bucket[K, V] {
 	m := make(map[K]Item[K, V])
-	c := &Cache[K, V]{
-		items:    m,
-		list:     list.NewList[K](),
-		elemChan: make(chan struct{}),
+	c := &Bucket[K, V]{
+		items:     m,
+		list:      list.NewList[K](),
+		cleanChan: make(chan struct{}),
 	}
 	c.StartClearCache()
 	return c
 }
 
-func (c *Cache[K, V]) PutKey(key K, value V) {
+func (c *Bucket[K, V]) putKey(key K, value V) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -53,12 +60,20 @@ func (c *Cache[K, V]) PutKey(key K, value V) {
 		Data:    value,
 	}
 
-	if c.list.Len == c.threshold {
-		c.elemChan <- struct{}{}
+	if c.list.CheckLength() == c.threshold {
+		c.cleanChan <- struct{}{}
 	}
 }
 
-func (c *Cache[K, V]) RemoveKey(key K) bool {
+func (c *Cache[K, V]) PutKey(key K, value V) {
+	i := hash(key)
+	if i == -1 {
+		return
+	}
+	c.Buckets[i].putKey(key, value)
+}
+
+func (c *Bucket[K, V]) removeKey(key K) bool {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 	item, ok := c.items[key]
@@ -71,7 +86,7 @@ func (c *Cache[K, V]) RemoveKey(key K) bool {
 	return true
 }
 
-func (c *Cache[K, V]) Get(key K) (any, bool) {
+func (c *Bucket[K, V]) get(key K) (any, bool) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -85,12 +100,21 @@ func (c *Cache[K, V]) Get(key K) (any, bool) {
 	return item.Data, true
 }
 
+func (c *Cache[K, V]) Get(key K) (any, bool) {
+	i := hash(key)
+	if i == -1 {
+		return nil, false
+	}
+
+	return c.Buckets[i].get(key)
+}
+
 type Data[K comparable, V any] struct {
 	Key   K
 	Value V
 }
 
-func (c *Cache[K, V]) GetAllRawData() ([]byte, error) {
+func (c *Bucket[K, V]) GetAllRawData() ([]byte, error) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -102,33 +126,36 @@ func (c *Cache[K, V]) GetAllRawData() ([]byte, error) {
 		})
 	}
 
-	rawByte, err := json.Marshal(data)
+	rawByte, err := json.Marshal(data) //не использовать json использовать бинарный формат
 	if err != nil {
 		return nil, err
 	}
 	return rawByte, nil
 }
 
-func (c *Cache[K, V]) StartClearCache() {
+func (c *Bucket[K, V]) StartClearCache() {
 	go c.clearCache()
 }
 
-func (c *Cache[K, V]) clean(e *list.Element[K], count int) *list.Element[K] {
-	delete(c.items, e.Value)
-	count++
-	return e.Next()
-}
-
-func (c *Cache[K, V]) clearCache() {
+func (c *Bucket[K, V]) clearCache() {
+	remains := viper.GetInt("cache.elems.remains_after_clean")
 	for {
-		<-c.elemChan
+		<-c.cleanChan
 		c.mx.Lock()
-		var count int
 		e := c.list.Front()
-		for count > c.threshold/2 {
-			e = c.clean(e, count)
+		for count := 0; count < remains; count++ {
+			delete(c.items, e.Value)
+			e = e.Next()
 		}
-		c.list.Remove(e.Prev())
+		c.list.RemoveFront(e.Prev(), remains)
 		c.mx.Unlock()
 	}
+}
+
+func hash[K comparable](key K) int {
+	bucketsAmount := viper.GetInt("cache.buckets_amount")
+	if reflect.TypeOf(key).Kind() == reflect.Int {
+		return int(reflect.ValueOf(key).Int()) % bucketsAmount
+	}
+	return -1
 }

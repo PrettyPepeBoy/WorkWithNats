@@ -74,7 +74,7 @@ func prepareDefaultRequest() []byte {
 }
 
 func generateRandomWord() string {
-	nBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+	nBig, err := rand.Int(rand.Reader, big.NewInt(int64(24)))
 	if err != nil {
 		logrus.Fatal("failed to generate word")
 	}

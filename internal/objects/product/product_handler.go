@@ -14,8 +14,12 @@ type Handler struct {
 	natsSubs *nats.Subscription
 }
 
+type Products struct {
+	Product []Product
+}
+
 type Product struct {
-	Id       uint32 `json:"id"`
+	Id       uint32 `json:"id,omitempty"`
 	Name     string `json:"name,required"`
 	Category string `json:"category,required"`
 	Location string `json:"location,omitempty"`
@@ -68,11 +72,25 @@ func (h *Handler) Process(msg *nats.Msg) {
 }
 
 func (h *Handler) validateProductData(product Product) bool {
+	const maxLength = 20
+
 	if len(product.Name) == 0 {
 		return false
 	}
-
 	if len(product.Category) == 0 {
+		return false
+	}
+
+	if len(product.Name) > maxLength {
+		return false
+	}
+	if len(product.Category) > maxLength {
+		return false
+	}
+	if len(product.Location) > maxLength {
+		return false
+	}
+	if len(product.Color) > maxLength {
 		return false
 	}
 
