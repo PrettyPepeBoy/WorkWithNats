@@ -1,14 +1,16 @@
 package cache
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"github.com/PrettyPepeBoy/WorkWithNats/pkg/list"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"reflect"
+	"strconv"
 	"sync"
 )
-
-// брать хэш от айди для более равномерного распределения
 
 type Bucket[K comparable, V any] struct {
 	mx        sync.Mutex
@@ -96,7 +98,10 @@ func (c *Bucket[K, V]) get(key K) (any, bool) {
 	}
 
 	c.list.Remove(item.element)
-	c.list.Put(key)
+	c.items[key] = Item[K, V]{
+		element: c.list.Put(key),
+		Data:    c.items[key].Data,
+	}
 	return item.Data, true
 }
 
@@ -153,9 +158,20 @@ func (c *Bucket[K, V]) clearCache() {
 }
 
 func hash[K comparable](key K) int {
-	bucketsAmount := viper.GetInt("cache.buckets_amount")
-	if reflect.TypeOf(key).Kind() == reflect.Int {
-		return int(reflect.ValueOf(key).Int()) % bucketsAmount
+	h := sha256.New()
+	_, err := h.Write([]byte(strconv.Itoa(int(reflect.ValueOf(key).Int()))))
+	if err != nil {
+		logrus.Fatalf("failed to hash key, error: %v", err)
+		return -1
 	}
-	return -1
+
+	bucketsAmount := viper.GetInt("cache.buckets_amount")
+	str := hex.EncodeToString(h.Sum(nil))
+	var count int32
+
+	for _, elem := range str {
+		count += elem
+	}
+	h.Reset()
+	return int(count) % bucketsAmount
 }

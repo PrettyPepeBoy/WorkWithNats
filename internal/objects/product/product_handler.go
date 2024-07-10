@@ -53,7 +53,7 @@ func NewHandler(natsConn *nats.Conn) (*Handler, error) {
 
 func (h *Handler) Process(msg *nats.Msg) {
 	var product Product
-	logrus.Infof("recieved message: %s", string(msg.Data))
+
 	err := json.Unmarshal(msg.Data, &product)
 	if err != nil {
 		logrus.Warn("failed to unmarshal message data to product, error: ", err)
@@ -111,7 +111,7 @@ func (h *Handler) validateProductData(product Product) bool {
 
 func (h *Handler) correctSymbols(word string) bool {
 	for _, elem := range word {
-		if !((elem >= 'a' && elem <= 'z') || (elem >= 'A' && elem <= 'Z')) {
+		if !((elem >= 'a' && elem <= 'z') || (elem >= 'A' && elem <= 'Z') || elem == '-') {
 			return false
 		}
 	}

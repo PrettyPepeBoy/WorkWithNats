@@ -61,15 +61,32 @@ func (h *HttpHandler) Handle(ctx *fasthttp.RequestCtx) {
 }
 
 func (h *HttpHandler) getProduct(ctx *fasthttp.RequestCtx) {
+	var p product.Products
+	p.Product = make([]product.Product, 1)
+
 	id, err := ctx.QueryArgs().GetUint("id")
 	if err != nil {
 		WriteErrorResponse(ctx, fasthttp.StatusBadRequest, err.Error())
 		return
 	}
 
-	data, find := h.productCache.Get(id)
+	cacheData, find := h.productCache.Get(id)
 	if find {
-		WriteResponse(ctx, fasthttp.StatusOK, data)
+		rawByte, ok := cacheData.([]byte)
+		if !ok {
+			logrus.Info("failed to cast data")
+			ctx.SetStatusCode(fasthttp.StatusInternalServerError)
+			return
+		}
+
+		err = json.Unmarshal(rawByte, &p.Product[0])
+		if err != nil {
+			logrus.Error("failed to unmarshal json", err)
+			ctx.SetStatusCode(fasthttp.StatusInternalServerError)
+			return
+		}
+
+		ProductsHTMLResponse(ctx, p)
 		return
 	}
 
@@ -84,42 +101,38 @@ func (h *HttpHandler) getProduct(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	var p product.Product
-	err = json.Unmarshal(databaseData, &p)
+	err = json.Unmarshal(databaseData, &p.Product[0])
 	if err != nil {
-		logrus.Error("failed to unmarshal json")
+		logrus.Error("failed to unmarshal json", err)
 		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 		return
 	}
 
-	ProductHTMLResponse(ctx, p)
-
+	ProductsHTMLResponse(ctx, p)
 	h.productCache.PutKey(id, databaseData)
 }
 
 func (h *HttpHandler) getAllProducts(ctx *fasthttp.RequestCtx) {
-	rawValues, err := h.productTable.GetAllFromTable()
+	var Products product.Products
+	var Product product.Product
+	var id uint32
+	rows, err := h.productTable.GetAllFromTable()
 	if err != nil {
 		logrus.Error("failed to get all products from table")
 		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 		return
 	}
 
-	var products product.Products
-	products.Product = make([]product.Product, len(rawValues))
-
-	var p product.Product
-	for i := 0; i < len(rawValues); i++ {
-		err = json.Unmarshal(rawValues[i], &p)
+	for rows.Next() {
+		err = rows.Scan(&id, &Product)
 		if err != nil {
-			logrus.Error("failed to unmarshal json")
-			ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 			return
 		}
-		products.Product[i] = p
+		Product.Id = id
+		Products.Product = append(Products.Product, Product)
 	}
 
-	ProductsHTMLResponse(ctx, products)
+	ProductsHTMLResponse(ctx, Products)
 	ctx.SetStatusCode(fasthttp.StatusOK)
 }
 

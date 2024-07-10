@@ -9,7 +9,6 @@ import (
 )
 
 var (
-	productTmpl  *template.Template
 	productsTmpl *template.Template
 )
 
@@ -47,14 +46,6 @@ func WriteJson(ctx *fasthttp.RequestCtx, object any) {
 	ctx.SetBody(prepared)
 }
 
-func ProductHTMLResponse(ctx *fasthttp.RequestCtx, products product.Product) {
-	err := productTmpl.Execute(ctx, products)
-	if err != nil {
-		logrus.Errorf("failed to execute template, error: %v", err)
-		return
-	}
-}
-
 func ProductsHTMLResponse(ctx *fasthttp.RequestCtx, products product.Products) {
 	err := productsTmpl.Execute(ctx, products)
 	if err != nil {
@@ -65,25 +56,16 @@ func ProductsHTMLResponse(ctx *fasthttp.RequestCtx, products product.Products) {
 
 func init() {
 	var err error
-	productTmpl, err = template.New("productInfo").Parse("Name: {{.Name}}\n " +
-		"Category: {{.Category}} \n" +
-		"Location: {{.Location}} \n" +
-		"Color: {{.Color}} \n" +
-		"Price: {{.Price}} \n" +
-		"Amount: {{.Amount}}")
 
-	if err != nil {
-		logrus.Fatalf("failed to parse tmpl, error: %v", err)
-	}
-
-	productsTmpl, err = template.New("productsInfo").Parse("{{range .Product}} \n" +
+	productsTmpl, err = template.New("productsInfo").Parse("{{range .Product}}" +
+		"Id: {{.Id}}\n" +
 		"Name: {{.Name}}\n " +
-		"Category: {{.Category}} \n" +
-		"Location: {{.Location}} \n" +
-		"Color: {{.Color}} \n" +
-		"Price: {{.Price}} \n" +
-		"Amount: {{.Amount}}{{end}}")
-
+		"Category: {{.Category}}\n" +
+		"Location: {{.Location}}\n" +
+		"Color: {{.Color}}\n" +
+		"Price: {{.Price}}\n" +
+		"Amount: {{.Amount}}\n {{end}}" +
+		"\n")
 	if err != nil {
 		logrus.Fatalf("failed to parse tmpl, error: %v", err)
 	}

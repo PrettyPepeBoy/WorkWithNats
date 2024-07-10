@@ -57,7 +57,7 @@ func NewTable() (*Table, error) {
 		return nil, err
 	}
 
-	getAllFromTable, err := conn.Prepare(context.Background(), "GetAllFromDb", `SELECT json_data FROM products WHERE id != 0`)
+	getAllFromTable, err := conn.Prepare(context.Background(), "GetAllFromDb", `SELECT id, json_data FROM products`)
 	if err != nil {
 		logrus.Errorf("failed to prepare getAllFromTableStmt, error: %v", err)
 		return nil, err
@@ -102,11 +102,11 @@ func (s *Table) DeleteById(id int) error {
 	return nil
 }
 
-func (s *Table) GetAllFromTable() ([][]byte, error) {
+func (s *Table) GetAllFromTable() (pgx.Rows, error) {
 	rows, err := s.db.Query(context.Background(), s.getAllFromTableStmt.Name)
 	if err != nil {
 		return nil, err
 	}
 
-	return rows.RawValues(), nil
+	return rows, nil
 }
