@@ -81,7 +81,7 @@ func (h *HttpHandler) getProduct(ctx *fasthttp.RequestCtx) {
 }
 
 func (h *HttpHandler) getCache(ctx *fasthttp.RequestCtx) {
-	data := make([]byte, 0, 2048)
+	data := make([]byte, 0)
 	for i := 0; i < len(h.productCache); i++ {
 		rawByte, err := h.productCache[i].GetAllRawData()
 		if err != nil {
