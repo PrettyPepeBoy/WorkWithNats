@@ -1,10 +1,11 @@
-FROM golang:1.22-alpine as build
+FROM golang:1.22-alpine as builder
 WORKDIR /app
 COPY . .
 RUN go mod download
-RUN go build  -o ./main
+RUN go build -o ./main
 
 FROM alpine:3
-COPY --from=build ./app/configuration.yaml .
-COPY --from=build ./app/main .
+WORKDIR /newApp
+COPY --from=builder ./app/main .
+COPY --from=builder ./app/configuration.yaml .
 ENTRYPOINT ["./main"]

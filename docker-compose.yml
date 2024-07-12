@@ -10,6 +10,8 @@ services:
       - nats
     environment:
       - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+    volumes:
+      - cache_backup:/var/lib/cache/data
 
   database:
     restart: always
@@ -29,3 +31,4 @@ services:
 
 volumes:
   database_data:
+  cache_backup:

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"github.com/PrettyPepeBoy/WorkWithNats/internal/cache"
@@ -10,8 +12,10 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/valyala/fasthttp"
+	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -19,7 +23,7 @@ import (
 
 var (
 	natsConn       *nats.Conn
-	productCache   []cache.Cache[int, []byte]
+	productCache   *cache.Cache[int, []byte]
 	productTable   *product.Table
 	productHandler *product.Handler
 )
@@ -38,7 +42,7 @@ func main() {
 
 	httpHandler := endpoint.NewHttpHandler(productCache, productTable)
 	initProductProcessing()
-	logrus.Info("our cache cleanup_interval is: ", viper.GetDuration("cache.cleanup_interval"))
+
 	logrus.Infof("listen server on port: %v", viper.GetString("http-server.port"))
 	go func() {
 		err := fasthttp.ListenAndServe(":"+viper.GetString("http-server.port"), httpHandler.Handle)
@@ -46,6 +50,8 @@ func main() {
 			logrus.Fatalf("failed to connect to http server")
 		}
 	}()
+
+	initBackupCache()
 
 	ctx, _ := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	<-ctx.Done()
@@ -90,6 +96,43 @@ func initProductProcessing() {
 			if err != nil {
 				logrus.Errorf("failed to put in table, error: %v", err)
 			}
+		}
+	}()
+}
+
+func initBackupCache() {
+	t := viper.GetDuration("cache.backup_interval")
+	bucketsAmount := viper.GetInt("cache.buckets_amount")
+
+	go func() {
+		for {
+			time.Sleep(t)
+
+			bytesBuf := make([]byte, 0, 2<<12)
+			buf := bytes.NewBuffer(bytesBuf)
+			for i := 0; i < bucketsAmount; i++ {
+				rawBytes, err := productCache.Buckets[i].GetAllRawData()
+				if err != nil {
+					logrus.Errorf("failed to get raw data from cache, error: %v", err)
+					return
+				}
+				buf.Write(rawBytes)
+			}
+
+			file, err := os.Create("/var/lib/cache/data/" + "cache_data.gz")
+			if err != nil {
+				logrus.Errorf("failed to create gzip file for backup, error: %v", err)
+				return
+			}
+
+			w := gzip.NewWriter(file)
+			_, err = w.Write(buf.Bytes())
+			if err != nil {
+				logrus.Errorf("failed to write data to gzip, error: %v", err)
+				return
+			}
+
+			_ = w.Close()
 		}
 	}()
 }

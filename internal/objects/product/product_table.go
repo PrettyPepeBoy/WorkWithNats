@@ -16,6 +16,7 @@ type Table struct {
 	putInTableStmt      *pgconn.StatementDescription
 	getFromTableStmt    *pgconn.StatementDescription
 	deleteFromTableStmt *pgconn.StatementDescription
+	getAllFromTableStmt *pgconn.StatementDescription
 }
 
 var (
@@ -56,10 +57,17 @@ func NewTable() (*Table, error) {
 		return nil, err
 	}
 
+	getAllFromTable, err := conn.Prepare(context.Background(), "GetAllFromDb", `SELECT id, json_data FROM products`)
+	if err != nil {
+		logrus.Errorf("failed to prepare getAllFromTableStmt, error: %v", err)
+		return nil, err
+	}
+
 	return &Table{db: conn,
 		putInTableStmt:      putInTableStmt,
 		getFromTableStmt:    getFromTableStmt,
 		deleteFromTableStmt: deleteFromTableStmt,
+		getAllFromTableStmt: getAllFromTable,
 	}, nil
 }
 
@@ -92,4 +100,13 @@ func (s *Table) DeleteById(id int) error {
 		return err
 	}
 	return nil
+}
+
+func (s *Table) GetAllFromTable() (pgx.Rows, error) {
+	rows, err := s.db.Query(context.Background(), s.getAllFromTableStmt.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return rows, nil
 }
