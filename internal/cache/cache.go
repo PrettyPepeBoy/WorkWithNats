@@ -1,9 +1,10 @@
 package cache
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/gob"
 	"encoding/hex"
-	"encoding/json"
 	"github.com/PrettyPepeBoy/WorkWithNats/pkg/list"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -13,11 +14,13 @@ import (
 )
 
 type Bucket[K comparable, V any] struct {
-	mx        sync.Mutex
-	items     map[K]Item[K, V]
-	list      *list.List[K]
-	cleanChan chan struct{}
-	threshold int
+	mx           sync.Mutex
+	items        map[K]Item[K, V]
+	list         *list.List[K]
+	elements     []list.Element[K]
+	cleanChan    chan struct{}
+	threshold    int
+	elementIndex int
 }
 
 type Item[K comparable, V any] struct {
@@ -31,23 +34,24 @@ type Cache[K comparable, V any] struct {
 
 func NewCache[K comparable, V any]() *Cache[K, V] {
 	bucketsAmount := viper.GetInt("cache.buckets_amount")
-	threshold := viper.GetInt("cache.elems.threshold")
 	var c Cache[K, V]
 	c.Buckets = make([]Bucket[K, V], bucketsAmount)
 	for i := range c.Buckets {
 		c.Buckets[i] = *newCacheBucket[K, V]()
-		c.Buckets[i].threshold = threshold
 	}
 
 	return &c
 }
 
 func newCacheBucket[K comparable, V any]() *Bucket[K, V] {
+	threshold := viper.GetInt("cache.elems.threshold")
 	m := make(map[K]Item[K, V])
 	c := &Bucket[K, V]{
 		items:     m,
 		list:      list.NewList[K](),
 		cleanChan: make(chan struct{}),
+		elements:  make([]list.Element[K], threshold),
+		threshold: threshold,
 	}
 	c.StartClearCache()
 	return c
@@ -57,10 +61,15 @@ func (c *Bucket[K, V]) putKey(key K, value V) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
+	c.elements[c.elementIndex%c.threshold] = list.Element[K]{
+		Value: key,
+	}
+
 	c.items[key] = Item[K, V]{
-		element: c.list.Put(key),
+		element: c.list.Put(&c.elements[c.elementIndex%c.threshold]),
 		Data:    value,
 	}
+	c.elementIndex++
 
 	if c.list.CheckLength() == c.threshold {
 		c.cleanChan <- struct{}{}
@@ -98,8 +107,13 @@ func (c *Bucket[K, V]) get(key K) (any, bool) {
 	}
 
 	c.list.Remove(item.element)
+
+	c.elements[c.elementIndex%c.threshold] = list.Element[K]{
+		Value: key,
+	}
+
 	c.items[key] = Item[K, V]{
-		element: c.list.Put(key),
+		element: c.list.Put(&c.elements[c.elementIndex%c.threshold]),
 		Data:    c.items[key].Data,
 	}
 	return item.Data, true
@@ -123,19 +137,22 @@ func (c *Bucket[K, V]) GetAllRawData() ([]byte, error) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
-	data := make([]Data[K, V], 0, len(c.items))
+	var buf bytes.Buffer
+	encoder := gob.NewEncoder(&buf)
+
 	for key := range c.items {
-		data = append(data, Data[K, V]{
+		data := Data[K, V]{
 			Key:   key,
 			Value: c.items[key].Data,
-		})
+		}
+
+		err := encoder.Encode(data)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	rawByte, err := json.Marshal(data) //не использовать json использовать бинарный формат
-	if err != nil {
-		return nil, err
-	}
-	return rawByte, nil
+	return buf.Bytes(), nil
 }
 
 func (c *Bucket[K, V]) StartClearCache() {

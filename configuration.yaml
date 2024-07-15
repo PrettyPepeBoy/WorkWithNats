@@ -11,7 +11,7 @@ cache:
     threshold: 500
     remains_after_clean: 250
   buckets_amount: 8
-  backup_interval: 30m
+  backup_interval: 30s
 
 http-server:
   port: 8000

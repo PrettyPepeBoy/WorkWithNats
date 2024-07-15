@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/gob"
 	"errors"
 	"github.com/PrettyPepeBoy/WorkWithNats/internal/cache"
 	"github.com/PrettyPepeBoy/WorkWithNats/internal/endpoint"
@@ -52,6 +53,7 @@ func main() {
 	}()
 
 	initBackupCache()
+	initBackupDatabase()
 
 	ctx, _ := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	<-ctx.Done()
@@ -120,6 +122,59 @@ func initBackupCache() {
 			}
 
 			file, err := os.Create("/var/lib/cache/data/" + "cache_data.gz")
+			if err != nil {
+				logrus.Errorf("failed to create gzip file for backup, error: %v", err)
+				return
+			}
+
+			w := gzip.NewWriter(file)
+			_, err = w.Write(buf.Bytes())
+			if err != nil {
+				logrus.Errorf("failed to write data to gzip, error: %v", err)
+				return
+			}
+
+			_ = w.Close()
+		}
+	}()
+}
+
+func initBackupDatabase() {
+	t := viper.GetDuration("cache.backup_interval")
+
+	go func() {
+		for {
+			time.Sleep(t)
+			var buf bytes.Buffer
+			encoder := gob.NewEncoder(&buf)
+
+			rows, err := productTable.GetAllFromTable()
+			if err != nil {
+				logrus.Errorf("failed to get data from table, error: %v", err)
+				return
+			}
+
+			var id uint32
+			var data []byte
+			for rows.Next() {
+				err = rows.Scan(&id, &data)
+				if err != nil {
+					logrus.Errorf("failed to scan from row, error: %v", err)
+					return
+				}
+
+				err = encoder.Encode(id)
+				if err != nil {
+					logrus.Errorf("failed to encode id, error: %v", err)
+				}
+
+				err = encoder.Encode(data)
+				if err != nil {
+					logrus.Errorf("failed to encode data, error: %v", err)
+				}
+			}
+
+			file, err := os.Create("/var/lib/database/data/" + "database_data.gz")
 			if err != nil {
 				logrus.Errorf("failed to create gzip file for backup, error: %v", err)
 				return

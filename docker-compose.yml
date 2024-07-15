@@ -12,6 +12,7 @@ services:
       - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
     volumes:
       - cache_backup:/var/lib/cache/data
+      - database_backup:/var/lib/database/data
 
   database:
     restart: always
@@ -32,3 +33,4 @@ services:
 volumes:
   database_data:
   cache_backup:
+  database_backup:

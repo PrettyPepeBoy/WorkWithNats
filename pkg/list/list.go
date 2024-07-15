@@ -39,19 +39,13 @@ func (l *List[K]) init() *List[K] {
 	return l
 }
 
-func (l *List[K]) putElementInList(e *Element[K]) *Element[K] {
+func (l *List[K]) Put(e *Element[K]) *Element[K] {
+	e.list = l
 	e.prev = l.lastInsert
 	e.prev.next = e
 	l.lastInsert = e
 	l.len++
 	return e
-}
-
-func (l *List[K]) Put(v K) *Element[K] {
-	e := &Element[K]{Value: v,
-		list: l,
-	}
-	return l.putElementInList(e)
 }
 
 func (l *List[K]) Remove(e *Element[K]) {
