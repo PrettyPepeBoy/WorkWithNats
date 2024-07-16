@@ -24,7 +24,7 @@ import (
 
 var (
 	natsConn       *nats.Conn
-	productCache   *cache.Cache[int, []byte]
+	productCache   *cache.Cache[cache.Int, cache.ByteSlc]
 	productTable   *product.Table
 	productHandler *product.Handler
 )
@@ -35,7 +35,7 @@ func main() {
 	mustInitConfig()
 	mustConnectNats()
 
-	productCache = cache.NewCache[int, []byte]()
+	productCache = cache.NewCache[cache.Int, cache.ByteSlc]()
 	productTable, err = product.NewTable()
 	if err != nil {
 		logrus.Fatal(err.Error())

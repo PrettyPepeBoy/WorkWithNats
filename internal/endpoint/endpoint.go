@@ -11,11 +11,11 @@ import (
 )
 
 type HttpHandler struct {
-	productCache *cache.Cache[int, []byte]
+	productCache *cache.Cache[cache.Int, cache.ByteSlc]
 	productTable *product.Table
 }
 
-func NewHttpHandler(productCache *cache.Cache[int, []byte], productTable *product.Table) *HttpHandler {
+func NewHttpHandler(productCache *cache.Cache[cache.Int, cache.ByteSlc], productTable *product.Table) *HttpHandler {
 	return &HttpHandler{
 		productCache: productCache,
 		productTable: productTable,
@@ -71,10 +71,10 @@ func (h *HttpHandler) getProduct(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	cacheData, find := h.productCache.Get(id)
+	cacheData, find := h.productCache.Get(cache.Int(id))
 	if find {
-		rawByte, ok := cacheData.([]byte)
-		if !ok {
+		rawByte, err := cacheData.Marshal()
+		if err != nil {
 			logrus.Info("failed to cast data")
 			ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 			return
@@ -110,7 +110,7 @@ func (h *HttpHandler) getProduct(ctx *fasthttp.RequestCtx) {
 	}
 
 	ProductsHTMLResponse(ctx, p)
-	h.productCache.PutKey(id, databaseData)
+	h.productCache.PutKey(cache.Int(id), databaseData)
 }
 
 func (h *HttpHandler) getAllProducts(ctx *fasthttp.RequestCtx) {

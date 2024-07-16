@@ -3,12 +3,13 @@ package cache
 import (
 	"bufio"
 	"bytes"
-	"encoding/gob"
+	"encoding/binary"
 	"github.com/PrettyPepeBoy/WorkWithNats/pkg/list"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"hash"
 	"hash/fnv"
+	"io"
 	"sync"
 	"unsafe"
 )
@@ -18,7 +19,16 @@ var (
 	remains   int
 )
 
-type bucket[K comparable, V any] struct {
+type Marshaller interface {
+	Marshal() ([]byte, error)
+}
+
+type Key interface {
+	Marshaller
+	comparable
+}
+
+type bucket[K Key, V Marshaller] struct {
 	mx           sync.Mutex
 	items        map[K]Item[K, V]
 	list         *list.List[K]
@@ -28,18 +38,18 @@ type bucket[K comparable, V any] struct {
 	elementIndex int
 }
 
-type Item[K comparable, V any] struct {
+type Item[K Key, V Marshaller] struct {
 	element *list.Element[K]
 	Data    V
 }
 
-type Cache[K comparable, V any] struct {
+type Cache[K Key, V Marshaller] struct {
 	buckets       []bucket[K, V]
 	bucketsAmount int
 	hash          hasher[K]
 }
 
-func NewCache[K comparable, V any]() *Cache[K, V] {
+func NewCache[K Key, V Marshaller]() *Cache[K, V] {
 	threshold = viper.GetInt("cache.elems.threshold")
 
 	var c Cache[K, V]
@@ -54,7 +64,7 @@ func NewCache[K comparable, V any]() *Cache[K, V] {
 	return &c
 }
 
-func newCacheBucket[K comparable, V any]() *bucket[K, V] {
+func newCacheBucket[K Key, V Marshaller]() *bucket[K, V] {
 	m := make(map[K]Item[K, V])
 
 	c := &bucket[K, V]{
@@ -105,7 +115,7 @@ func (c *bucket[K, V]) removeKey(key K) bool {
 	return true
 }
 
-func (c *bucket[K, V]) get(key K) (any, bool) {
+func (c *bucket[K, V]) get(key K) (Marshaller, bool) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -127,12 +137,12 @@ func (c *bucket[K, V]) get(key K) (any, bool) {
 	return item.Data, true
 }
 
-func (c *Cache[K, V]) Get(key K) (any, bool) {
+func (c *Cache[K, V]) Get(key K) (Marshaller, bool) {
 	i := int(c.hash.getHash(key)) % c.bucketsAmount
 	return c.buckets[i].get(key)
 }
 
-type Data[K comparable, V any] struct {
+type Data[K Key, V Marshaller] struct {
 	Key   K
 	Value V
 }
@@ -143,7 +153,7 @@ func (c *bucket[K, V]) dump() func(w *bufio.Writer) {
 		defer c.mx.Unlock()
 
 		var buf bytes.Buffer
-		encoder := gob.NewEncoder(&buf)
+		enc := newEncoder[K, V](&buf)
 
 		for key := range c.items {
 			data := Data[K, V]{
@@ -151,7 +161,7 @@ func (c *bucket[K, V]) dump() func(w *bufio.Writer) {
 				Value: c.items[key].Data,
 			}
 
-			err := encoder.Encode(data)
+			err := enc.encode(data)
 			if err != nil {
 				logrus.Errorf("failed to encode data, error: %v", err)
 				panic(err)
@@ -213,4 +223,68 @@ func (h *hasher[K]) getHash(key K) uint32 {
 	}
 
 	return h.hash.Sum32()
+}
+
+type encoder[K Key, V Marshaller] struct {
+	writer io.Writer
+}
+
+func newEncoder[K Key, V Marshaller](writer io.Writer) *encoder[K, V] {
+	return &encoder[K, V]{writer: writer}
+}
+
+func (enc *encoder[K, V]) encode(item Data[K, V]) error {
+	rawByteValue, err := item.Value.Marshal()
+	if err != nil {
+		return err
+	}
+
+	_, err = enc.writer.Write(rawByteValue)
+	if err != nil {
+		return err
+	}
+
+	rawByteKey, err := item.Key.Marshal()
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = enc.writer.Write(rawByteKey)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type Int int
+
+func (i Int) Marshal() ([]byte, error) {
+	b := make([]byte, 0, 8)
+	binary.BigEndian.AppendUint64(b, uint64(i))
+	return b, nil
+}
+
+type ByteSlc []byte
+
+func (slc ByteSlc) Marshal() ([]byte, error) {
+	b := make(ByteSlc, 0, 256)
+	b = append(b, slc...)
+	return b, nil
+}
+
+type Uint32 uint32
+
+func (ui Uint32) Marshal() ([]byte, error) {
+	b := make([]byte, 0, 4)
+	binary.BigEndian.AppendUint32(b, uint32(ui))
+	return b, nil
+}
+
+type Uint64 uint64
+
+func (ui Uint64) Marshal() ([]byte, error) {
+	b := make([]byte, 0, 8)
+	binary.BigEndian.AppendUint64(b, uint64(ui))
+	return b, nil
 }
