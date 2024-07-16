@@ -1,19 +1,24 @@
 package cache
 
 import (
+	"bufio"
 	"bytes"
-	"crypto/sha256"
 	"encoding/gob"
-	"encoding/hex"
 	"github.com/PrettyPepeBoy/WorkWithNats/pkg/list"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"reflect"
-	"strconv"
+	"hash"
+	"hash/fnv"
 	"sync"
+	"unsafe"
 )
 
-type Bucket[K comparable, V any] struct {
+var (
+	threshold int
+	remains   int
+)
+
+type bucket[K comparable, V any] struct {
 	mx           sync.Mutex
 	items        map[K]Item[K, V]
 	list         *list.List[K]
@@ -29,35 +34,41 @@ type Item[K comparable, V any] struct {
 }
 
 type Cache[K comparable, V any] struct {
-	Buckets []Bucket[K, V]
+	buckets       []bucket[K, V]
+	bucketsAmount int
+	hash          hasher[K]
 }
 
 func NewCache[K comparable, V any]() *Cache[K, V] {
-	bucketsAmount := viper.GetInt("cache.buckets_amount")
+	threshold = viper.GetInt("cache.elems.threshold")
+
 	var c Cache[K, V]
-	c.Buckets = make([]Bucket[K, V], bucketsAmount)
-	for i := range c.Buckets {
-		c.Buckets[i] = *newCacheBucket[K, V]()
+	c.bucketsAmount = viper.GetInt("cache.buckets_amount")
+	c.buckets = make([]bucket[K, V], c.bucketsAmount)
+	for i := range c.buckets {
+		c.buckets[i] = *newCacheBucket[K, V]()
 	}
+
+	c.hash = *newHasher[K]()
 
 	return &c
 }
 
-func newCacheBucket[K comparable, V any]() *Bucket[K, V] {
-	threshold := viper.GetInt("cache.elems.threshold")
+func newCacheBucket[K comparable, V any]() *bucket[K, V] {
 	m := make(map[K]Item[K, V])
-	c := &Bucket[K, V]{
+
+	c := &bucket[K, V]{
 		items:     m,
 		list:      list.NewList[K](),
 		cleanChan: make(chan struct{}),
 		elements:  make([]list.Element[K], threshold),
 		threshold: threshold,
 	}
-	c.StartClearCache()
+	c.startClearCache()
 	return c
 }
 
-func (c *Bucket[K, V]) putKey(key K, value V) {
+func (c *bucket[K, V]) putKey(key K, value V) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -77,14 +88,11 @@ func (c *Bucket[K, V]) putKey(key K, value V) {
 }
 
 func (c *Cache[K, V]) PutKey(key K, value V) {
-	i := hash(key)
-	if i == -1 {
-		return
-	}
-	c.Buckets[i].putKey(key, value)
+	i := int(c.hash.getHash(key)) % c.bucketsAmount
+	c.buckets[i].putKey(key, value)
 }
 
-func (c *Bucket[K, V]) removeKey(key K) bool {
+func (c *bucket[K, V]) removeKey(key K) bool {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 	item, ok := c.items[key]
@@ -97,7 +105,7 @@ func (c *Bucket[K, V]) removeKey(key K) bool {
 	return true
 }
 
-func (c *Bucket[K, V]) get(key K) (any, bool) {
+func (c *bucket[K, V]) get(key K) (any, bool) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -120,12 +128,8 @@ func (c *Bucket[K, V]) get(key K) (any, bool) {
 }
 
 func (c *Cache[K, V]) Get(key K) (any, bool) {
-	i := hash(key)
-	if i == -1 {
-		return nil, false
-	}
-
-	return c.Buckets[i].get(key)
+	i := int(c.hash.getHash(key)) % c.bucketsAmount
+	return c.buckets[i].get(key)
 }
 
 type Data[K comparable, V any] struct {
@@ -133,36 +137,48 @@ type Data[K comparable, V any] struct {
 	Value V
 }
 
-func (c *Bucket[K, V]) GetAllRawData() ([]byte, error) {
-	c.mx.Lock()
-	defer c.mx.Unlock()
+func (c *bucket[K, V]) dump() func(w *bufio.Writer) {
+	return func(w *bufio.Writer) {
+		c.mx.Lock()
+		defer c.mx.Unlock()
 
-	var buf bytes.Buffer
-	encoder := gob.NewEncoder(&buf)
+		var buf bytes.Buffer
+		encoder := gob.NewEncoder(&buf)
 
-	for key := range c.items {
-		data := Data[K, V]{
-			Key:   key,
-			Value: c.items[key].Data,
-		}
+		for key := range c.items {
+			data := Data[K, V]{
+				Key:   key,
+				Value: c.items[key].Data,
+			}
 
-		err := encoder.Encode(data)
-		if err != nil {
-			return nil, err
+			err := encoder.Encode(data)
+			if err != nil {
+				logrus.Errorf("failed to encode data, error: %v", err)
+				panic(err)
+			}
+
+			_, err = w.Write(buf.Bytes())
+			if err != nil {
+				logrus.Errorf("failed to write data to buffer, error: %v", err)
+				panic(err)
+			}
 		}
 	}
-
-	return buf.Bytes(), nil
 }
 
-func (c *Bucket[K, V]) StartClearCache() {
+func (c *Cache[K, V]) GetAllRawData(bufWriter *bufio.Writer) {
+	for i := 0; i < c.bucketsAmount; i++ {
+		c.buckets[i].dump()(bufWriter)
+	}
+}
+
+func (c *bucket[K, V]) startClearCache() {
 	go c.clearCache()
 }
 
-func (c *Bucket[K, V]) clearCache() {
-	remains := viper.GetInt("cache.elems.remains_after_clean")
-	for {
-		<-c.cleanChan
+func (c *bucket[K, V]) clearCache() {
+	remains = viper.GetInt("cache.elems.remains_after_clean")
+	for range c.cleanChan {
 		c.mx.Lock()
 		e := c.list.Front()
 		for count := 0; count < remains; count++ {
@@ -174,21 +190,27 @@ func (c *Bucket[K, V]) clearCache() {
 	}
 }
 
-func hash[K comparable](key K) int {
-	h := sha256.New()
-	_, err := h.Write([]byte(strconv.Itoa(int(reflect.ValueOf(key).Int()))))
+type hasher[K comparable] struct {
+	size uintptr
+	hash hash.Hash32
+}
+
+func newHasher[K comparable]() *hasher[K] {
+	var tmp K
+	return &hasher[K]{
+		size: unsafe.Sizeof(tmp),
+		hash: fnv.New32(),
+	}
+}
+
+func (h *hasher[K]) getHash(key K) uint32 {
+	ptr := (*byte)(unsafe.Pointer(&key))
+	data := unsafe.Slice(ptr, h.size)
+
+	_, err := h.hash.Write(data)
 	if err != nil {
-		logrus.Fatalf("failed to hash key, error: %v", err)
-		return -1
+		panic(err)
 	}
 
-	bucketsAmount := viper.GetInt("cache.buckets_amount")
-	str := hex.EncodeToString(h.Sum(nil))
-	var count int32
-
-	for _, elem := range str {
-		count += elem
-	}
-	h.Reset()
-	return int(count) % bucketsAmount
+	return h.hash.Sum32()
 }

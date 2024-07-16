@@ -1,6 +1,7 @@
 package endpoint
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"github.com/PrettyPepeBoy/WorkWithNats/internal/cache"
@@ -137,17 +138,8 @@ func (h *HttpHandler) getAllProducts(ctx *fasthttp.RequestCtx) {
 }
 
 func (h *HttpHandler) getCache(ctx *fasthttp.RequestCtx) {
-	data := make([]byte, 0, 2048)
-	for i := 0; i < len(h.productCache.Buckets); i++ {
-		rawByte, err := h.productCache.Buckets[i].GetAllRawData()
-		if err != nil {
-			logrus.Error("failed to marshal json, error:", err)
-			WriteErrorResponse(ctx, fasthttp.StatusInternalServerError, err.Error())
-		}
-
-		data = append(data, rawByte...)
-	}
+	bufWriter := bufio.NewWriter(ctx)
+	h.productCache.GetAllRawData(bufWriter)
 
 	ctx.SetStatusCode(fasthttp.StatusOK)
-	ctx.SetBody(data)
 }
