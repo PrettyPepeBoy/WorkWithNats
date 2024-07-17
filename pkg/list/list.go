@@ -23,7 +23,6 @@ func (e *Element[K]) Prev() *Element[K] {
 type List[K comparable] struct {
 	root       Element[K]
 	lastInsert *Element[K]
-	len        int
 }
 
 func NewList[K comparable]() *List[K] {
@@ -35,7 +34,6 @@ func (l *List[K]) init() *List[K] {
 	l.root.next = &l.root
 	l.root.list = l
 	l.lastInsert = &l.root
-	l.len = 0
 	return l
 }
 
@@ -44,7 +42,6 @@ func (l *List[K]) Put(e *Element[K]) *Element[K] {
 	e.prev = l.lastInsert
 	e.prev.next = e
 	l.lastInsert = e
-	l.len++
 	return e
 }
 
@@ -61,13 +58,11 @@ func (l *List[K]) Remove(e *Element[K]) {
 	e.next = nil
 	e.prev = nil
 	e.list = nil
-	l.len--
 }
 
-func (l *List[K]) RemoveFront(e *Element[K], elemsAmount int) {
+func (l *List[K]) RemoveFront(e *Element[K]) {
 	e.prev = &l.root
 	e.prev.next = e
-	l.len -= elemsAmount
 }
 
 func (l *List[K]) Front() *Element[K] {
@@ -84,8 +79,4 @@ func (l *List[K]) findElem(v K) *Element[K] {
 		}
 	}
 	return nil
-}
-
-func (l *List[K]) CheckLength() int {
-	return l.len
 }

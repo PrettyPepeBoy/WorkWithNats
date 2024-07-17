@@ -29,18 +29,20 @@ type Key interface {
 }
 
 type bucket[K Key, V Marshaller] struct {
-	mx           sync.Mutex
-	items        map[K]Item[K, V]
-	list         *list.List[K]
-	elements     []list.Element[K]
-	cleanChan    chan struct{}
-	threshold    int
-	elementIndex int
+	mx                sync.Mutex
+	items             map[K]Item[K, V]
+	list              *list.List[K]
+	elements          []list.Element[K]
+	cleanChan         chan struct{}
+	threshold         int
+	index             int
+	remainsAfterClear int
 }
 
 type Item[K Key, V Marshaller] struct {
 	element *list.Element[K]
 	Data    V
+	index   int
 }
 
 type Cache[K Key, V Marshaller] struct {
@@ -53,7 +55,7 @@ func NewCache[K Key, V Marshaller]() *Cache[K, V] {
 	threshold = viper.GetInt("cache.elems.threshold")
 
 	var c Cache[K, V]
-	c.bucketsAmount = viper.GetInt("cache.buckets_amount")
+	c.bucketsAmount = viper.GetInt("cache.buckets-amount")
 	c.buckets = make([]bucket[K, V], c.bucketsAmount)
 	for i := range c.buckets {
 		c.buckets[i] = *newCacheBucket[K, V]()
@@ -82,17 +84,18 @@ func (c *bucket[K, V]) putKey(key K, value V) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
-	c.elements[c.elementIndex%c.threshold] = list.Element[K]{
+	c.elements[c.index] = list.Element[K]{
 		Value: key,
 	}
 
 	c.items[key] = Item[K, V]{
-		element: c.list.Put(&c.elements[c.elementIndex%c.threshold]),
+		element: c.list.Put(&c.elements[c.index]),
 		Data:    value,
+		index:   c.index,
 	}
-	c.elementIndex++
+	c.index++
 
-	if c.list.CheckLength() == c.threshold {
+	if c.index == c.threshold {
 		c.cleanChan <- struct{}{}
 	}
 }
@@ -126,14 +129,16 @@ func (c *bucket[K, V]) get(key K) (Marshaller, bool) {
 
 	c.list.Remove(item.element)
 
-	c.elements[c.elementIndex%c.threshold] = list.Element[K]{
+	c.elements[item.index] = list.Element[K]{
 		Value: key,
 	}
 
 	c.items[key] = Item[K, V]{
-		element: c.list.Put(&c.elements[c.elementIndex%c.threshold]),
-		Data:    c.items[key].Data,
+		element: c.list.Put(&c.elements[item.index]),
+		Data:    item.Data,
+		index:   item.index,
 	}
+
 	return item.Data, true
 }
 
@@ -195,7 +200,12 @@ func (c *bucket[K, V]) clearCache() {
 			delete(c.items, e.Value)
 			e = e.Next()
 		}
-		c.list.RemoveFront(e.Prev(), remains)
+
+		if c.index == c.threshold {
+			c.index = c.remainsAfterClear
+		}
+
+		c.list.RemoveFront(e.Prev())
 		c.mx.Unlock()
 	}
 }

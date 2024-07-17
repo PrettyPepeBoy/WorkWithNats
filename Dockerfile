@@ -8,4 +8,5 @@ FROM alpine:3
 WORKDIR /newApp
 COPY --from=builder ./app/main .
 COPY --from=builder ./app/configuration.yaml .
+COPY --from=builder ./app/product.html .
 ENTRYPOINT ["./main"]

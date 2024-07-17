@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="">
+<head>
+    <title>Products</title>
+</head>
+<body>
+<p>{{range .Product}}</p>
+<ul>
+    <li>Id: {{.Id}}</li>
+    <li>Name: {{.Name}}</li>
+    <li>Category: {{.Category}}</li>
+    <li>Location: {{.Location}}</li>
+    <li>Color: {{.Color}}</li>
+    <li>Price: {{.Price}}</li>
+    <li>Amount: {{.Amount}}\n {{end}}</li>
+</ul>
+</body>
+</html>

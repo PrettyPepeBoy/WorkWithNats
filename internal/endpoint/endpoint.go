@@ -56,6 +56,14 @@ func (h *HttpHandler) Handle(ctx *fasthttp.RequestCtx) {
 			ctx.SetStatusCode(fasthttp.StatusNotFound)
 		}
 
+	case "/api/v1/cache/dump":
+		switch string(ctx.Method()) {
+		case fasthttp.MethodGet:
+			h.dumpCache(ctx)
+		default:
+			ctx.SetStatusCode(fasthttp.StatusNotFound)
+		}
+
 	default:
 		ctx.SetStatusCode(fasthttp.StatusNotFound)
 	}
@@ -141,5 +149,10 @@ func (h *HttpHandler) getCache(ctx *fasthttp.RequestCtx) {
 	bufWriter := bufio.NewWriter(ctx)
 	h.productCache.GetAllRawData(bufWriter)
 
+	ctx.SetStatusCode(fasthttp.StatusOK)
+}
+
+func (h *HttpHandler) dumpCache(ctx *fasthttp.RequestCtx) {
+	ctx.SetBodyStreamWriter(h.productCache.GetAllRawData)
 	ctx.SetStatusCode(fasthttp.StatusOK)
 }

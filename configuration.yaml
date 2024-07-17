@@ -9,9 +9,9 @@ product:
 cache:
   elems:
     threshold: 500
-    remains_after_clean: 250
-  buckets_amount: 8
-  backup_interval: 30s
+    remains-after-clean: 250
+  buckets-amount: 8
+  backup-interval: 30m
 
 http-server:
   port: 8000

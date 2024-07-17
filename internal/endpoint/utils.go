@@ -57,15 +57,7 @@ func ProductsHTMLResponse(ctx *fasthttp.RequestCtx, products product.Products) {
 func init() {
 	var err error
 
-	productsTmpl, err = template.New("productsInfo").Parse("{{range .Product}}" +
-		"Id: {{.Id}}\n" +
-		"Name: {{.Name}}\n " +
-		"Category: {{.Category}}\n" +
-		"Location: {{.Location}}\n" +
-		"Color: {{.Color}}\n" +
-		"Price: {{.Price}}\n" +
-		"Amount: {{.Amount}}\n {{end}}" +
-		"\n")
+	productsTmpl, err = template.ParseFiles("product.html")
 	if err != nil {
 		logrus.Fatalf("failed to parse tmpl, error: %v", err)
 	}
