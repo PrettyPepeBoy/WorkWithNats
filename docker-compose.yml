@@ -8,6 +8,7 @@ services:
     depends_on:
       - database
       - nats
+      - prometheus
     environment:
       - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
     volumes:
@@ -29,6 +30,27 @@ services:
     ports:
       - 4222:4222
 
+  prometheus:
+    restart: always
+    image: prom/prometheus:latest
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus/:/etc/prometheus/
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - 3000:3000
+    volumes:
+      - grafana-storage:/var/lib/grafana
+
 volumes:
   database_data:
   cache_backup:
+  prometheus_data:
+  grafana-storage:

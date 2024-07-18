@@ -6,19 +6,57 @@ import (
 	"errors"
 	"github.com/PrettyPepeBoy/WorkWithNats/internal/cache"
 	"github.com/PrettyPepeBoy/WorkWithNats/internal/objects/product"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
+
+type metrics struct {
+	devices prometheus.Gauge
+	counter prometheus.Counter
+}
+
+func newMetrics(reg prometheus.Registerer) *metrics {
+	m := &metrics{
+
+		devices: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: "TestTaskNatsApp",
+				Name:      "connected_devices",
+				Help:      "number of connected devices",
+			}),
+
+		counter: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: "TestTaskNatsApp",
+				Name:      "ping_request_count",
+				Help:      "No of request handled by Ping handler",
+			}),
+	}
+
+	reg.MustRegister(m.devices, m.counter)
+	return m
+}
 
 type HttpHandler struct {
 	productCache *cache.Cache[cache.Int, cache.ByteSlc]
 	productTable *product.Table
+	promHandler  fasthttp.RequestHandler
+
+	metrics *metrics
 }
 
 func NewHttpHandler(productCache *cache.Cache[cache.Int, cache.ByteSlc], productTable *product.Table) *HttpHandler {
+	reg := prometheus.NewRegistry()
+
 	return &HttpHandler{
 		productCache: productCache,
 		productTable: productTable,
+		promHandler:  fasthttpadaptor.NewFastHTTPHandler(promhttp.HandlerFor(reg, promhttp.HandlerOpts{})),
+
+		metrics: newMetrics(reg),
 	}
 }
 
@@ -26,6 +64,8 @@ func (h *HttpHandler) Handle(ctx *fasthttp.RequestCtx) {
 	switch string(ctx.Path()) {
 
 	case "/api/v1/product":
+		h.metrics.devices.Set(2)
+		h.metrics.counter.Inc()
 		switch string(ctx.Method()) {
 		case fasthttp.MethodGet:
 			h.getProduct(ctx)
@@ -34,6 +74,7 @@ func (h *HttpHandler) Handle(ctx *fasthttp.RequestCtx) {
 		}
 
 	case "/api/v1/product/all":
+		h.metrics.counter.Inc()
 		switch string(ctx.Method()) {
 		case fasthttp.MethodGet:
 			h.getAllProducts(ctx)
@@ -42,6 +83,7 @@ func (h *HttpHandler) Handle(ctx *fasthttp.RequestCtx) {
 		}
 
 	case "/api/v1/user":
+		h.metrics.counter.Inc()
 		switch string(ctx.Method()) {
 		case fasthttp.MethodGet:
 		default:
@@ -49,6 +91,7 @@ func (h *HttpHandler) Handle(ctx *fasthttp.RequestCtx) {
 		}
 
 	case "/api/v1/cache":
+		h.metrics.counter.Inc()
 		switch string(ctx.Method()) {
 		case fasthttp.MethodGet:
 			h.getCache(ctx)
@@ -57,12 +100,16 @@ func (h *HttpHandler) Handle(ctx *fasthttp.RequestCtx) {
 		}
 
 	case "/api/v1/cache/dump":
+		h.metrics.counter.Inc()
 		switch string(ctx.Method()) {
 		case fasthttp.MethodGet:
 			h.dumpCache(ctx)
 		default:
 			ctx.SetStatusCode(fasthttp.StatusNotFound)
 		}
+
+	case "/api/v1/metrics":
+		h.promHandler(ctx)
 
 	default:
 		ctx.SetStatusCode(fasthttp.StatusNotFound)
