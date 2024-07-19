@@ -9,6 +9,8 @@ import (
 	"github.com/PrettyPepeBoy/WorkWithNats/internal/cache"
 	"github.com/PrettyPepeBoy/WorkWithNats/internal/endpoint"
 	"github.com/PrettyPepeBoy/WorkWithNats/internal/objects/product"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/nats-io/nats.go"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -17,9 +19,6 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
 var (

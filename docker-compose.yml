@@ -9,10 +9,12 @@ services:
       - database
       - nats
       - prometheus
+      - grafana
     environment:
       - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
     volumes:
       - cache_backup:/var/lib/cache/data
+
 
   database:
     restart: always
