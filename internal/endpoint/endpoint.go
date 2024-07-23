@@ -11,11 +11,14 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
+	"strconv"
+	"time"
 )
 
 type metrics struct {
-	devices prometheus.Gauge
-	counter prometheus.Counter
+	devices  prometheus.Gauge
+	counter  prometheus.Counter
+	duration *prometheus.HistogramVec
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
@@ -34,9 +37,17 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 				Name:      "ping_request_count",
 				Help:      "No of request handled by Ping handler",
 			}),
+
+		duration: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: "TestTaskNatsApp",
+				Name:      "reply_time",
+				Help:      "how long api reply takes time",
+				Buckets:   []float64{0.1, 0.25, 0.5, 1},
+			}, []string{"endpoint", "method", "status"}),
 	}
 
-	reg.MustRegister(m.devices, m.counter)
+	reg.MustRegister(m.devices, m.counter, m.duration)
 	return m
 }
 
@@ -64,7 +75,6 @@ func (h *HttpHandler) Handle(ctx *fasthttp.RequestCtx) {
 	switch string(ctx.Path()) {
 
 	case "/api/v1/product":
-		h.metrics.devices.Set(2)
 		h.metrics.counter.Inc()
 		switch string(ctx.Method()) {
 		case fasthttp.MethodGet:
@@ -117,12 +127,15 @@ func (h *HttpHandler) Handle(ctx *fasthttp.RequestCtx) {
 }
 
 func (h *HttpHandler) getProduct(ctx *fasthttp.RequestCtx) {
+	t := time.Now()
+
 	var p product.Products
 	p.Product = make([]product.Product, 1)
 
 	id, err := ctx.QueryArgs().GetUint("id")
 	if err != nil {
 		WriteErrorResponse(ctx, fasthttp.StatusBadRequest, err.Error())
+		h.metrics.durationReply("getProduct", fasthttp.MethodGet, strconv.Itoa(fasthttp.StatusBadRequest), t)
 		return
 	}
 
@@ -132,17 +145,20 @@ func (h *HttpHandler) getProduct(ctx *fasthttp.RequestCtx) {
 		if err != nil {
 			logrus.Info("failed to cast data")
 			ctx.SetStatusCode(fasthttp.StatusInternalServerError)
+			h.metrics.durationReply("getProduct", fasthttp.MethodGet, strconv.Itoa(fasthttp.StatusInternalServerError), t)
 			return
 		}
 
 		err = json.Unmarshal(rawByte, &p.Product[0])
 		if err != nil {
 			logrus.Error("failed to unmarshal json", err)
+			h.metrics.durationReply("getProduct", fasthttp.MethodGet, strconv.Itoa(fasthttp.StatusInternalServerError), t)
 			ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 			return
 		}
 
 		ProductsHTMLResponse(ctx, p)
+		h.metrics.durationReply("getProduct", fasthttp.MethodGet, strconv.Itoa(fasthttp.StatusOK), t)
 		return
 	}
 
@@ -150,9 +166,11 @@ func (h *HttpHandler) getProduct(ctx *fasthttp.RequestCtx) {
 	if err != nil {
 		if errors.Is(err, product.ErrRowNotExist) {
 			ctx.SetStatusCode(fasthttp.StatusNoContent)
+			h.metrics.durationReply("getProduct", fasthttp.MethodGet, strconv.Itoa(fasthttp.StatusNoContent), t)
 		} else {
 			logrus.Error("failed to get data from database, error: ", err)
 			WriteErrorResponse(ctx, fasthttp.StatusInternalServerError, err.Error())
+			h.metrics.durationReply("getProduct", fasthttp.MethodGet, strconv.Itoa(fasthttp.StatusInternalServerError), t)
 		}
 		return
 	}
@@ -161,10 +179,12 @@ func (h *HttpHandler) getProduct(ctx *fasthttp.RequestCtx) {
 	if err != nil {
 		logrus.Error("failed to unmarshal json", err)
 		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
+		h.metrics.durationReply("getProduct", fasthttp.MethodGet, strconv.Itoa(fasthttp.StatusInternalServerError), t)
 		return
 	}
 
 	ProductsHTMLResponse(ctx, p)
+	h.metrics.durationReply("getProduct", fasthttp.MethodGet, strconv.Itoa(fasthttp.StatusOK), t)
 	h.productCache.PutKey(cache.Int(id), databaseData)
 }
 
@@ -202,4 +222,8 @@ func (h *HttpHandler) getCache(ctx *fasthttp.RequestCtx) {
 func (h *HttpHandler) dumpCache(ctx *fasthttp.RequestCtx) {
 	ctx.SetBodyStreamWriter(h.productCache.GetAllRawData)
 	ctx.SetStatusCode(fasthttp.StatusOK)
+}
+
+func (m *metrics) durationReply(endpoint string, method string, status string, t time.Time) {
+	m.duration.With(prometheus.Labels{"endpoint": endpoint, "method": method, "status": status}).Observe(time.Since(t).Seconds())
 }
